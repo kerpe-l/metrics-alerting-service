@@ -18,7 +18,6 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -86,6 +85,7 @@ func TestMetricsHandler_UpdateHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, _ := testRequest(t, ts, tt.method, tt.url)
+			defer resp.Body.Close()
 			assert.Equal(t, tt.want.code, resp.StatusCode)
 		})
 	}
@@ -139,6 +139,7 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, body := testRequest(t, ts, http.MethodGet, tt.url)
+			defer resp.Body.Close()
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 			assert.Equal(t, tt.wantBody, body)
 		})
@@ -157,6 +158,7 @@ func TestMetricsHandler_RootHandler(t *testing.T) {
 	defer ts.Close()
 
 	resp, body := testRequest(t, ts, http.MethodGet, "/")
+	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
