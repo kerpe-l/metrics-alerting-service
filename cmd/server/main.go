@@ -1,10 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 )
@@ -13,16 +14,17 @@ func main() {
 	storage := repository.NewMemStorage()
 	h := &handler.MetricsHandler{Storage: storage}
 
-	http.HandleFunc("/update/", h.UpdateHandler)
+	r := chi.NewRouter()
 
-	// TODO удалить потом
-	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Counters: %v\nGauges: %v", storage.Counters, storage.Gauges)
-	})
+	r.Use(middleware.Logger)
+
+	r.Get("/", h.RootHandler)
+	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
+	r.Get("/value/{type}/{name}", h.ValueHandler)
 
 	log.Println("Сервер запущен на http://localhost:8080")
 
-	err := http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", r)
 	if err != nil {
 		log.Fatal("Ошибка запуска сервера: ", err)
 	}
