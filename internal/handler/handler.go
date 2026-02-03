@@ -66,7 +66,7 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strconv.FormatInt(val, 10)))
 
 	default:
-		http.Error(w, "Неверный тип метрики", http.StatusNotFound) // По заданию тут тоже можно 404
+		http.Error(w, "Неверный тип метрики", http.StatusNotFound)
 		return
 	}
 }
