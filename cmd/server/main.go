@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -11,20 +12,23 @@ import (
 )
 
 func main() {
+	addr := flag.String("a", "localhost:8080", "address and port to run server")
+
+	flag.Parse()
+
 	storage := repository.NewMemStorage()
 	h := &handler.MetricsHandler{Storage: storage}
 
 	r := chi.NewRouter()
-
 	r.Use(middleware.Logger)
 
 	r.Get("/", h.RootHandler)
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
 	r.Get("/value/{type}/{name}", h.ValueHandler)
 
-	log.Println("Сервер запущен на http://localhost:8080")
+	log.Printf("Сервер запущен на %s\n", *addr)
 
-	err := http.ListenAndServe(":8080", r)
+	err := http.ListenAndServe(*addr, r)
 	if err != nil {
 		log.Fatal("Ошибка запуска сервера: ", err)
 	}
