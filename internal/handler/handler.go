@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 )
 
@@ -20,7 +21,7 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	mValue := chi.URLParam(r, "value")
 
 	switch mType {
-	case "gauge":
+	case model.Gauge:
 		val, err := strconv.ParseFloat(mValue, 64)
 		if err != nil {
 			http.Error(w, "Некорректное значение", http.StatusBadRequest)
@@ -28,7 +29,7 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		h.Storage.UpdateGauge(mName, val)
 
-	case "counter":
+	case model.Counter:
 		val, err := strconv.ParseInt(mValue, 10, 64)
 		if err != nil {
 			http.Error(w, "Некорректное значение", http.StatusBadRequest)
@@ -49,7 +50,7 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	mName := chi.URLParam(r, "name")
 
 	switch mType {
-	case "gauge":
+	case model.Gauge:
 		val, ok := h.Storage.GetGauge(mName)
 		if !ok {
 			http.Error(w, "Метрика не найдена", http.StatusNotFound)
@@ -57,7 +58,7 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
 
-	case "counter":
+	case model.Counter:
 		val, ok := h.Storage.GetCounter(mName)
 		if !ok {
 			http.Error(w, "Метрика не найдена", http.StatusNotFound)
