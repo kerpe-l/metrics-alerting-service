@@ -24,7 +24,7 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	case model.Gauge:
 		val, err := strconv.ParseFloat(mValue, 64)
 		if err != nil {
-			http.Error(w, "Некорректное значение", http.StatusBadRequest)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		h.Storage.UpdateGauge(mName, val)
@@ -32,13 +32,13 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	case model.Counter:
 		val, err := strconv.ParseInt(mValue, 10, 64)
 		if err != nil {
-			http.Error(w, "Некорректное значение", http.StatusBadRequest)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		h.Storage.UpdateCounter(mName, val)
 
 	default:
-		http.Error(w, "Неверный тип метрики", http.StatusBadRequest)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
@@ -53,7 +53,7 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	case model.Gauge:
 		val, ok := h.Storage.GetGauge(mName)
 		if !ok {
-			http.Error(w, "Метрика не найдена", http.StatusNotFound)
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
 		w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
@@ -61,13 +61,13 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	case model.Counter:
 		val, ok := h.Storage.GetCounter(mName)
 		if !ok {
-			http.Error(w, "Метрика не найдена", http.StatusNotFound)
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
 		w.Write([]byte(strconv.FormatInt(val, 10)))
 
 	default:
-		http.Error(w, "Неверный тип метрики", http.StatusNotFound)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 }

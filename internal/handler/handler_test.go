@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.Response, string) {
@@ -70,9 +71,15 @@ func TestMetricsHandler_UpdateHandler(t *testing.T) {
 			want:   want{code: http.StatusNotFound},
 		},
 		{
-			name:   "Некорректное значение",
+			name:   "Некорректное значение (gauge)",
 			method: http.MethodPost,
 			url:    "/update/gauge/testGauge/none",
+			want:   want{code: http.StatusBadRequest},
+		},
+		{
+			name:   "Некорректное значение (counter)",
+			method: http.MethodPost,
+			url:    "/update/counter/testCounter/none",
 			want:   want{code: http.StatusBadRequest},
 		},
 		{
@@ -126,13 +133,13 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 			name:     "Получение несуществующей метрики",
 			url:      "/value/gauge/nonExistent",
 			wantCode: http.StatusNotFound,
-			wantBody: "Метрика не найдена\n",
+			wantBody: http.StatusText(http.StatusNotFound) + "\n",
 		},
 		{
 			name:     "Неверный тип метрики",
 			url:      "/value/unknown/existingGauge",
-			wantCode: http.StatusNotFound,
-			wantBody: "Неверный тип метрики\n",
+			wantCode: http.StatusBadRequest,
+			wantBody: http.StatusText(http.StatusBadRequest) + "\n",
 		},
 	}
 
