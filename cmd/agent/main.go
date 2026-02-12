@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
@@ -15,6 +17,20 @@ func main() {
 	pollInterval := flag.Int("p", 2, "poll interval in seconds")
 
 	flag.Parse()
+
+	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
+		*addr = envAddr
+	}
+	if envReport := os.Getenv("REPORT_INTERVAL"); envReport != "" {
+		if v, err := strconv.Atoi(envReport); err == nil {
+			*reportInterval = v
+		}
+	}
+	if envPoll := os.Getenv("POLL_INTERVAL"); envPoll != "" {
+		if v, err := strconv.Atoi(envPoll); err == nil {
+			*pollInterval = v
+		}
+	}
 
 	reportDuration := time.Duration(*reportInterval) * time.Second
 	pollDuration := time.Duration(*pollInterval) * time.Second

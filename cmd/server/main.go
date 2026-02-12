@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,6 +16,10 @@ func main() {
 	addr := flag.String("a", "localhost:8080", "address and port to run server")
 
 	flag.Parse()
+
+	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
+		*addr = envAddr
+	}
 
 	storage := repository.NewMemStorage()
 	h := &handler.MetricsHandler{Storage: storage}
