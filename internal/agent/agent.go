@@ -5,6 +5,10 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
+
+	"go.uber.org/zap"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 )
 
 type Stats struct {
@@ -76,7 +80,7 @@ func (s *Stats) Send(serverAddr string) {
 func (s *Stats) sendRequest(url string) {
 	resp, err := http.Post(url, "text/plain", nil)
 	if err != nil {
-		fmt.Printf("Ошибка при отправке: %v\n", err)
+		logger.Log.Info("send error", zap.Error(err))
 		return
 	}
 	resp.Body.Close()
