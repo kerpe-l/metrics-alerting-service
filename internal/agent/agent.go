@@ -80,7 +80,7 @@ func (s *Stats) Send(serverAddr string) {
 func (s *Stats) sendRequest(url string) {
 	resp, err := http.Post(url, "text/plain", nil)
 	if err != nil {
-		logger.Log.Info("send error", zap.Error(err))
+		logger.Log.Info("Ошибка при отправке", zap.Error(err))
 		return
 	}
 	resp.Body.Close()
