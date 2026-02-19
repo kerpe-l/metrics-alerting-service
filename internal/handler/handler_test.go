@@ -271,8 +271,9 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 	}
 
 	t.Run("counter accumulation", func(t *testing.T) {
-		testJSONRequest(t, ts, http.MethodPost, "/update/",
+		resp1, _ := testJSONRequest(t, ts, http.MethodPost, "/update/",
 			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(5)})
+		resp1.Body.Close()
 		resp, body := testJSONRequest(t, ts, http.MethodPost, "/update/",
 			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(3)})
 		defer resp.Body.Close()
