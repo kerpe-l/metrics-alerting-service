@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 )
 
@@ -171,4 +174,196 @@ func TestMetricsHandler_RootHandler(t *testing.T) {
 	assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
 	assert.Contains(t, body, "testCounter")
 	assert.Contains(t, body, "5")
+}
+
+func ptrFloat64(v float64) *float64 { return &v }
+func ptrInt64(v int64) *int64       { return &v }
+
+func testJSONRequest(t *testing.T, ts *httptest.Server, method, path string, body interface{}) (*http.Response, string) {
+	data, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(method, ts.URL+path, bytes.NewBuffer(data))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return resp, string(respBody)
+}
+
+func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
+	storage := repository.NewMemStorage()
+	h := &MetricsHandler{Storage: storage}
+
+	r := chi.NewRouter()
+	r.Post("/update/", h.UpdateJSONHandler)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	tests := []struct {
+		name      string
+		payload   model.Metrics
+		wantCode  int
+		wantValue *float64
+		wantDelta *int64
+	}{
+		{
+			name:      "gauge update",
+			payload:   model.Metrics{ID: "testGauge", MType: model.Gauge, Value: ptrFloat64(100.5)},
+			wantCode:  http.StatusOK,
+			wantValue: ptrFloat64(100.5),
+		},
+		{
+			name:      "counter update",
+			payload:   model.Metrics{ID: "testCounter", MType: model.Counter, Delta: ptrInt64(10)},
+			wantCode:  http.StatusOK,
+			wantDelta: ptrInt64(10),
+		},
+		{
+			name:     "empty ID",
+			payload:  model.Metrics{ID: "", MType: model.Gauge, Value: ptrFloat64(1.0)},
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "unknown type",
+			payload:  model.Metrics{ID: "test", MType: "unknown", Value: ptrFloat64(1.0)},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "nil value for gauge",
+			payload:  model.Metrics{ID: "test", MType: model.Gauge},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "nil delta for counter",
+			payload:  model.Metrics{ID: "test", MType: model.Counter},
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := testJSONRequest(t, ts, http.MethodPost, "/update/", tt.payload)
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
+
+			if tt.wantCode == http.StatusOK {
+				assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+				var result model.Metrics
+				require.NoError(t, json.Unmarshal([]byte(body), &result))
+				if tt.wantValue != nil {
+					require.NotNil(t, result.Value)
+					assert.InDelta(t, *tt.wantValue, *result.Value, 0.001)
+				}
+				if tt.wantDelta != nil {
+					require.NotNil(t, result.Delta)
+					assert.Equal(t, *tt.wantDelta, *result.Delta)
+				}
+			}
+		})
+	}
+
+	t.Run("counter accumulation", func(t *testing.T) {
+		testJSONRequest(t, ts, http.MethodPost, "/update/",
+			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(5)})
+		resp, body := testJSONRequest(t, ts, http.MethodPost, "/update/",
+			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(3)})
+		defer resp.Body.Close()
+
+		var result model.Metrics
+		require.NoError(t, json.Unmarshal([]byte(body), &result))
+		require.NotNil(t, result.Delta)
+		assert.Equal(t, int64(8), *result.Delta)
+	})
+
+	t.Run("malformed JSON", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/update/", bytes.NewBufferString("not json"))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := ts.Client().Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+func TestMetricsHandler_ValueJSONHandler(t *testing.T) {
+	storage := repository.NewMemStorage()
+	storage.UpdateGauge("existingGauge", 123.45)
+	storage.UpdateCounter("existingCounter", 100)
+
+	h := &MetricsHandler{Storage: storage}
+
+	r := chi.NewRouter()
+	r.Post("/value/", h.ValueJSONHandler)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	tests := []struct {
+		name      string
+		payload   model.Metrics
+		wantCode  int
+		wantValue *float64
+		wantDelta *int64
+	}{
+		{
+			name:      "get existing gauge",
+			payload:   model.Metrics{ID: "existingGauge", MType: model.Gauge},
+			wantCode:  http.StatusOK,
+			wantValue: ptrFloat64(123.45),
+		},
+		{
+			name:      "get existing counter",
+			payload:   model.Metrics{ID: "existingCounter", MType: model.Counter},
+			wantCode:  http.StatusOK,
+			wantDelta: ptrInt64(100),
+		},
+		{
+			name:     "non-existent metric",
+			payload:  model.Metrics{ID: "noSuchMetric", MType: model.Gauge},
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "empty ID",
+			payload:  model.Metrics{ID: "", MType: model.Gauge},
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "unknown type",
+			payload:  model.Metrics{ID: "existingGauge", MType: "invalid"},
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := testJSONRequest(t, ts, http.MethodPost, "/value/", tt.payload)
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
+
+			if tt.wantCode == http.StatusOK {
+				assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+				var result model.Metrics
+				require.NoError(t, json.Unmarshal([]byte(body), &result))
+				if tt.wantValue != nil {
+					require.NotNil(t, result.Value)
+					assert.InDelta(t, *tt.wantValue, *result.Value, 0.001)
+				}
+				if tt.wantDelta != nil {
+					require.NotNil(t, result.Delta)
+					assert.Equal(t, *tt.wantDelta, *result.Delta)
+				}
+			}
+		})
+	}
 }

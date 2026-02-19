@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -70,6 +71,86 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+}
+
+func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Request) {
+	var metric model.Metrics
+
+	if err := json.NewDecoder(r.Body).Decode(&metric); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if metric.ID == "" {
+		http.Error(w, "metric ID is required", http.StatusNotFound)
+		return
+	}
+
+	switch metric.MType {
+	case model.Gauge:
+		if metric.Value == nil {
+			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+			return
+		}
+		h.Storage.UpdateGauge(metric.ID, *metric.Value)
+		val, _ := h.Storage.GetGauge(metric.ID)
+		metric.Value = &val
+
+	case model.Counter:
+		if metric.Delta == nil {
+			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			return
+		}
+		h.Storage.UpdateCounter(metric.ID, *metric.Delta)
+		val, _ := h.Storage.GetCounter(metric.ID)
+		metric.Delta = &val
+
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metric)
+}
+
+func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request) {
+	var metric model.Metrics
+
+	if err := json.NewDecoder(r.Body).Decode(&metric); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if metric.ID == "" {
+		http.Error(w, "metric ID is required", http.StatusNotFound)
+		return
+	}
+
+	switch metric.MType {
+	case model.Gauge:
+		val, ok := h.Storage.GetGauge(metric.ID)
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
+			return
+		}
+		metric.Value = &val
+
+	case model.Counter:
+		val, ok := h.Storage.GetCounter(metric.ID)
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
+			return
+		}
+		metric.Delta = &val
+
+	default:
+		http.Error(w, "unknown metric type", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metric)
 }
 
 // RootHandler отдает HTML со списком всех метрик

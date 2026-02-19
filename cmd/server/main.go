@@ -33,6 +33,8 @@ func main() {
 	r.Get("/", h.RootHandler)
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
 	r.Get("/value/{type}/{name}", h.ValueHandler)
+	r.Post("/update/", h.UpdateJSONHandler)
+	r.Post("/value/", h.ValueJSONHandler)
 
 	logger.Log.Info("Сервер запущен на " + *addr)
 

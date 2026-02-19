@@ -1,7 +1,8 @@
 package agent
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
 type Stats struct {
@@ -62,25 +64,33 @@ func (s *Stats) Collect() {
 }
 
 func (s *Stats) Send(serverAddr string) {
+	url := serverAddr + "/update/"
+
 	// 1. Отправляем все Gauge метрики
 	for name, value := range s.RuntimeMetrics {
-		url := fmt.Sprintf("%s/update/gauge/%s/%f", serverAddr, name, value)
-		s.sendRequest(url)
+		val := value
+		s.sendJSON(url, model.Metrics{ID: name, MType: model.Gauge, Value: &val})
 	}
 
 	// 2. Отправляем RandomValue
-	urlRandom := fmt.Sprintf("%s/update/gauge/RandomValue/%f", serverAddr, s.RandomValue)
-	s.sendRequest(urlRandom)
+	rv := s.RandomValue
+	s.sendJSON(url, model.Metrics{ID: "RandomValue", MType: model.Gauge, Value: &rv})
 
 	// 3. Отправляем PollCount
-	urlCount := fmt.Sprintf("%s/update/counter/PollCount/%d", serverAddr, s.PollCount)
-	s.sendRequest(urlCount)
+	pc := s.PollCount
+	s.sendJSON(url, model.Metrics{ID: "PollCount", MType: model.Counter, Delta: &pc})
 }
 
-func (s *Stats) sendRequest(url string) {
-	resp, err := http.Post(url, "text/plain", nil)
+func (s *Stats) sendJSON(url string, metric model.Metrics) {
+	body, err := json.Marshal(metric)
 	if err != nil {
-		logger.Log.Info("Ошибка при отправке", zap.Error(err))
+		logger.Log.Info("failed to marshal metric", zap.Error(err))
+		return
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		logger.Log.Info("failed to send metric", zap.Error(err))
 		return
 	}
 	resp.Body.Close()
