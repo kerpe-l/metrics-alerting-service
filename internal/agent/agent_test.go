@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -67,9 +68,16 @@ func TestStats_Send(t *testing.T) {
 		assert.Equal(t, "/update/", r.URL.Path)
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Fatalf("failed to create gzip reader: %v", err)
+		}
+		defer gz.Close()
 
 		var m model.Metrics
-		if err := json.NewDecoder(r.Body).Decode(&m); err == nil {
+		if err := json.NewDecoder(gz).Decode(&m); err == nil {
 			received = append(received, m)
 		}
 		w.WriteHeader(http.StatusOK)

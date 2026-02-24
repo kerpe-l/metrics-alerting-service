@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"math/rand"
 	"net/http"
@@ -88,7 +89,30 @@ func (s *Stats) sendJSON(url string, metric model.Metrics) {
 		return
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	// Сжимаем тело запроса через gzip
+	var buf bytes.Buffer
+	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if err != nil {
+		logger.Log.Info("failed to create gzip writer", zap.Error(err))
+		return
+	}
+	_, err = gz.Write(body)
+	if err != nil {
+		logger.Log.Info("failed to write gzip data", zap.Error(err))
+		return
+	}
+	gz.Close()
+
+	req, err := http.NewRequest(http.MethodPost, url, &buf)
+	if err != nil {
+		logger.Log.Info("failed to create request", zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		logger.Log.Info("failed to send metric", zap.Error(err))
 		return

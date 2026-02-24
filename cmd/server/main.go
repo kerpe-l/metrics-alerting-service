@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
@@ -29,6 +30,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
+	r.Use(gzip.Middleware)
 
 	r.Get("/", h.RootHandler)
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
