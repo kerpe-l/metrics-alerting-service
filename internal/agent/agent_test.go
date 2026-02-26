@@ -1,11 +1,15 @@
 package agent
 
 import (
+	"compress/gzip"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
 func TestNewStats(t *testing.T) {
@@ -58,29 +62,46 @@ func TestStats_Collect(t *testing.T) {
 }
 
 func TestStats_Send(t *testing.T) {
-	// тестовый сервер
+	var received []model.Metrics
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/update/", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Fatalf("failed to create gzip reader: %v", err)
+		}
+		defer gz.Close()
+
+		var m model.Metrics
+		if err := json.NewDecoder(gz).Decode(&m); err == nil {
+			received = append(received, m)
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	tests := []struct {
-		name       string
-		serverAddr string
-	}{
-		{
-			name:       "Успешная отправка на сервер",
-			serverAddr: server.URL,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := NewStats()
-			s.Collect()
+	s := NewStats()
+	s.Collect()
+	s.Send(server.URL)
 
-			assert.NotPanics(t, func() {
-				s.Send(tt.serverAddr)
-			})
-		})
+	expectedCount := len(s.RuntimeMetrics) + 2 // gauges + RandomValue + PollCount
+	assert.Equal(t, expectedCount, len(received))
+
+	var foundPollCount bool
+	for _, m := range received {
+		assert.NotEmpty(t, m.ID)
+		if m.ID == "PollCount" {
+			assert.Equal(t, model.Counter, m.MType)
+			assert.NotNil(t, m.Delta)
+			foundPollCount = true
+		} else {
+			assert.Equal(t, model.Gauge, m.MType)
+			assert.NotNil(t, m.Value)
+		}
 	}
+	assert.True(t, foundPollCount)
 }
