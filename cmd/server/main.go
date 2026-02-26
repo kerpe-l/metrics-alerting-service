@@ -71,10 +71,7 @@ func main() {
 	// Если интервал == 0, оборачиваем хранилище для синхронной записи
 	var st repository.Storage = storage
 	if *storeInterval == 0 && *fileStoragePath != "" {
-		st = &syncStorage{
-			Storage:  storage,
-			filePath: *fileStoragePath,
-		}
+		st = filestorage.NewSyncStorage(storage, *fileStoragePath)
 	}
 
 	h := &handler.MetricsHandler{Storage: st}
@@ -95,20 +92,4 @@ func main() {
 	if err != nil {
 		logger.Log.Fatal(err.Error())
 	}
-}
-
-// syncStorage оборачивает Storage и после каждого обновления сохраняет данные на диск.
-type syncStorage struct {
-	repository.Storage
-	filePath string
-}
-
-func (s *syncStorage) UpdateGauge(name string, value float64) {
-	s.Storage.UpdateGauge(name, value)
-	filestorage.Save(s.filePath, s.Storage)
-}
-
-func (s *syncStorage) UpdateCounter(name string, value int64) {
-	s.Storage.UpdateCounter(name, value)
-	filestorage.Save(s.filePath, s.Storage)
 }

@@ -93,7 +93,11 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		h.Storage.UpdateGauge(metric.ID, *metric.Value)
-		val, _ := h.Storage.GetGauge(metric.ID)
+		val, ok := h.Storage.GetGauge(metric.ID)
+		if !ok {
+			http.Error(w, "failed to get gauge after update", http.StatusInternalServerError)
+			return
+		}
 		metric.Value = &val
 
 	case model.Counter:
@@ -102,7 +106,11 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		h.Storage.UpdateCounter(metric.ID, *metric.Delta)
-		val, _ := h.Storage.GetCounter(metric.ID)
+		val, ok := h.Storage.GetCounter(metric.ID)
+		if !ok {
+			http.Error(w, "failed to get counter after update", http.StatusInternalServerError)
+			return
+		}
 		metric.Delta = &val
 
 	default:
@@ -111,7 +119,10 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(metric)
+	if err := json.NewEncoder(w).Encode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +161,10 @@ func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(metric)
+	if err := json.NewEncoder(w).Encode(metric); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // RootHandler отдает HTML со списком всех метрик

@@ -9,17 +9,47 @@ import (
 
 type gzipWriter struct {
 	http.ResponseWriter
-	Writer io.Writer
+	gz      *gzip.Writer
+	started bool
 }
 
-func (w gzipWriter) Write(b []byte) (int, error) {
-	return w.Writer.Write(b)
+func (w *gzipWriter) decide() {
+	if w.started {
+		return
+	}
+	w.started = true
+	ct := w.Header().Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") || strings.HasPrefix(ct, "text/html") {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Del("Content-Length")
+		w.gz = gzip.NewWriter(w.ResponseWriter)
+	}
+}
+
+func (w *gzipWriter) WriteHeader(code int) {
+	w.decide()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *gzipWriter) Write(b []byte) (int, error) {
+	w.decide()
+	if w.gz != nil {
+		return w.gz.Write(b)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *gzipWriter) Close() error {
+	if w.gz != nil {
+		return w.gz.Close()
+	}
+	return nil
 }
 
 // Middleware обрабатывает входящие gzip-запросы и сжимает ответы для клиентов, поддерживающих gzip
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Декомпрессия входящего запроса
+		// Декомпрессия запроса
 		if r.Header.Get("Content-Encoding") == "gzip" {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
@@ -27,7 +57,10 @@ func Middleware(next http.Handler) http.Handler {
 				return
 			}
 			defer gz.Close()
-			r.Body = gz
+			r.Body = struct {
+				io.Reader
+				io.Closer
+			}{gz, r.Body}
 		}
 
 		// Компрессия ответа
@@ -36,14 +69,8 @@ func Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		defer gz.Close()
-
-		w.Header().Set("Content-Encoding", "gzip")
-		next.ServeHTTP(gzipWriter{ResponseWriter: w, Writer: gz}, r)
+		gw := &gzipWriter{ResponseWriter: w}
+		defer gw.Close()
+		next.ServeHTTP(gw, r)
 	})
 }
