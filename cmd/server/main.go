@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kerpe-l/metrics-alerting-service/internal/filestorage"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -20,6 +22,7 @@ func main() {
 	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
 	fileStoragePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
 	restore := flag.Bool("r", true, "restore metrics from file on start")
+	databaseDSN := flag.String("d", "", "database connection string")
 
 	flag.Parse()
 
@@ -38,6 +41,9 @@ func main() {
 		if v, err := strconv.ParseBool(envRestore); err == nil {
 			*restore = v
 		}
+	}
+	if envDSN := os.Getenv("DATABASE_DSN"); envDSN != "" {
+		*databaseDSN = envDSN
 	}
 
 	if err := logger.Initialize("info"); err != nil {
@@ -74,7 +80,18 @@ func main() {
 		st = filestorage.NewSyncStorage(storage, *fileStoragePath)
 	}
 
-	h := &handler.MetricsHandler{Storage: st}
+	var dbPool *pgxpool.Pool
+	if *databaseDSN != "" {
+		pool, err := pgxpool.New(context.Background(), *databaseDSN)
+		if err != nil {
+			logger.Log.Fatal("Не удалось подключиться к БД: " + err.Error())
+		}
+		defer pool.Close()
+		dbPool = pool
+		logger.Log.Info("Подключение к БД установлено")
+	}
+
+	h := &handler.MetricsHandler{Storage: st, DB: dbPool}
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
@@ -85,6 +102,7 @@ func main() {
 	r.Get("/value/{type}/{name}", h.ValueHandler)
 	r.Post("/update/", h.UpdateJSONHandler)
 	r.Post("/value/", h.ValueJSONHandler)
+	r.Get("/ping", h.PingDB)
 
 	logger.Log.Info("Сервер запущен на " + *addr)
 
