@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/filestorage"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -50,45 +51,56 @@ func main() {
 		panic(err)
 	}
 
-	storage := repository.NewMemStorage()
-
-	// Восстанавливаем метрики из файла при старте, если задано
-	if *restore && *fileStoragePath != "" {
-		if err := filestorage.Load(*fileStoragePath, storage); err != nil {
-			logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
-		} else {
-			logger.Log.Info("Метрики загружены из файла " + *fileStoragePath)
-		}
-	}
-
-	// Запускаем периодическое сохранение, если интервал > 0
-	if *storeInterval > 0 && *fileStoragePath != "" {
-		go func() {
-			ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
-			defer ticker.Stop()
-			for range ticker.C {
-				if err := filestorage.Save(*fileStoragePath, storage); err != nil {
-					logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
-				}
-			}
-		}()
-	}
-
-	// Если интервал == 0, оборачиваем хранилище для синхронной записи
-	var st repository.Storage = storage
-	if *storeInterval == 0 && *fileStoragePath != "" {
-		st = filestorage.NewSyncStorage(storage, *fileStoragePath)
-	}
-
+	var st repository.Storage
 	var dbPool *pgxpool.Pool
+
 	if *databaseDSN != "" {
+		// Режим БД
+		if err := database.RunMigrations(*databaseDSN); err != nil {
+			logger.Log.Fatal("Ошибка миграции БД: " + err.Error())
+		}
+
 		pool, err := pgxpool.New(context.Background(), *databaseDSN)
 		if err != nil {
 			logger.Log.Fatal("Не удалось подключиться к БД: " + err.Error())
 		}
 		defer pool.Close()
 		dbPool = pool
-		logger.Log.Info("Подключение к БД установлено")
+
+		st = repository.NewDBStorage(pool)
+		logger.Log.Info("Хранение метрик: PostgreSQL")
+	} else {
+		// Режим файл/память
+		storage := repository.NewMemStorage()
+
+		// Восстанавливаем метрики из файла при старте, если задано
+		if *restore && *fileStoragePath != "" {
+			if err := filestorage.Load(*fileStoragePath, storage); err != nil {
+				logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
+			} else {
+				logger.Log.Info("Метрики загружены из файла " + *fileStoragePath)
+			}
+		}
+
+		// Запускаем периодическое сохранение, если интервал > 0
+		if *storeInterval > 0 && *fileStoragePath != "" {
+			go func() {
+				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+				defer ticker.Stop()
+				for range ticker.C {
+					if err := filestorage.Save(*fileStoragePath, storage); err != nil {
+						logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
+					}
+				}
+			}()
+		}
+
+		// Если интервал == 0, оборачиваем хранилище для синхронной записи
+		st = storage
+		if *storeInterval == 0 && *fileStoragePath != "" {
+			st = filestorage.NewSyncStorage(storage, *fileStoragePath)
+		}
+		logger.Log.Info("Хранение метрик: память/файл")
 	}
 
 	h := &handler.MetricsHandler{Storage: st, DB: dbPool}
