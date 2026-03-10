@@ -1,4 +1,4 @@
-package repository
+package pg
 
 import (
 	"context"
@@ -6,17 +6,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DBStorage реализует интерфейс Storage, используя PostgreSQL в качестве хранилища метрик.
-type DBStorage struct {
+// Storage реализует интерфейс repository.Storage, используя PostgreSQL в качестве хранилища метрик.
+type Storage struct {
 	pool *pgxpool.Pool
 }
 
-// NewDBStorage создаёт новый DBStorage на базе пула соединений pgx.
-func NewDBStorage(pool *pgxpool.Pool) *DBStorage {
-	return &DBStorage{pool: pool}
+// NewStorage создаёт новый Storage на базе пула соединений pgx.
+func NewStorage(pool *pgxpool.Pool) *Storage {
+	return &Storage{pool: pool}
 }
 
-func (d *DBStorage) UpdateGauge(name string, value float64) {
+func (d *Storage) UpdateGauge(name string, value float64) {
 	_, _ = d.pool.Exec(context.Background(),
 		`INSERT INTO metrics (id, type, value)
 		 VALUES ($1, 'gauge', $2)
@@ -25,7 +25,7 @@ func (d *DBStorage) UpdateGauge(name string, value float64) {
 	)
 }
 
-func (d *DBStorage) UpdateCounter(name string, value int64) {
+func (d *Storage) UpdateCounter(name string, value int64) {
 	_, _ = d.pool.Exec(context.Background(),
 		`INSERT INTO metrics (id, type, delta)
 		 VALUES ($1, 'counter', $2)
@@ -34,7 +34,7 @@ func (d *DBStorage) UpdateCounter(name string, value int64) {
 	)
 }
 
-func (d *DBStorage) GetGauge(name string) (float64, bool) {
+func (d *Storage) GetGauge(name string) (float64, bool) {
 	var val float64
 	err := d.pool.QueryRow(context.Background(),
 		`SELECT value FROM metrics WHERE id = $1 AND type = 'gauge'`,
@@ -46,7 +46,7 @@ func (d *DBStorage) GetGauge(name string) (float64, bool) {
 	return val, true
 }
 
-func (d *DBStorage) GetCounter(name string) (int64, bool) {
+func (d *Storage) GetCounter(name string) (int64, bool) {
 	var val int64
 	err := d.pool.QueryRow(context.Background(),
 		`SELECT delta FROM metrics WHERE id = $1 AND type = 'counter'`,
@@ -58,7 +58,7 @@ func (d *DBStorage) GetCounter(name string) (int64, bool) {
 	return val, true
 }
 
-func (d *DBStorage) GetAll() (map[string]float64, map[string]int64) {
+func (d *Storage) GetAll() (map[string]float64, map[string]int64) {
 	gauges := make(map[string]float64)
 	counters := make(map[string]int64)
 
