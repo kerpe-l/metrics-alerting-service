@@ -156,6 +156,34 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 	}
 }
 
+func TestMetricsHandler_PingDB(t *testing.T) {
+	tests := []struct {
+		name     string
+		handler  *MetricsHandler
+		wantCode int
+	}{
+		{
+			name:     "DB не задана — 500",
+			handler:  &MetricsHandler{Storage: repository.NewMemStorage(), DB: nil},
+			wantCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := chi.NewRouter()
+			r.Get("/ping", tt.handler.PingDB)
+
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+
+			resp, _ := testRequest(t, ts, http.MethodGet, "/ping")
+			defer resp.Body.Close()
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
+		})
+	}
+}
+
 func TestMetricsHandler_RootHandler(t *testing.T) {
 	storage := repository.NewMemStorage()
 	storage.UpdateCounter("testCounter", 5)
