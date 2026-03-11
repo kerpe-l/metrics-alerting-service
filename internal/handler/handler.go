@@ -169,6 +169,28 @@ func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// UpdateBatchHandler принимает массив метрик и обновляет их одним батчем.
+func (h *MetricsHandler) UpdateBatchHandler(w http.ResponseWriter, r *http.Request) {
+	var metrics []model.Metrics
+
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(metrics) == 0 {
+		http.Error(w, "empty batch", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Storage.UpdateBatch(metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // PingDB проверяет соединение с базой данных.
 func (h *MetricsHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 	if h.DB == nil {

@@ -65,7 +65,7 @@ func main() {
 
 		case <-reportTicker.C:
 			logger.Log.Info("Отправка метрик...")
-			s.Send(serverAddr)
+			s.SendBatch(serverAddr)
 		}
 	}
 }

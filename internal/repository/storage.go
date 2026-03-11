@@ -3,11 +3,14 @@ package repository
 import (
 	"maps"
 	"sync"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
 type Storage interface {
 	UpdateGauge(name string, value float64)
 	UpdateCounter(name string, value int64)
+	UpdateBatch(metrics []model.Metrics) error
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
 	GetAll() (map[string]float64, map[string]int64)
@@ -36,6 +39,25 @@ func (ms *MemStorage) UpdateCounter(name string, value int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.counters[name] += value
+}
+
+func (ms *MemStorage) UpdateBatch(metrics []model.Metrics) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case model.Gauge:
+			if m.Value != nil {
+				ms.gauges[m.ID] = *m.Value
+			}
+		case model.Counter:
+			if m.Delta != nil {
+				ms.counters[m.ID] += *m.Delta
+			}
+		}
+	}
+	return nil
 }
 
 func (ms *MemStorage) GetGauge(name string) (float64, bool) {

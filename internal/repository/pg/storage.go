@@ -2,8 +2,11 @@ package pg
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
 // Storage реализует интерфейс repository.Storage, используя PostgreSQL в качестве хранилища метрик.
@@ -32,6 +35,44 @@ func (d *Storage) UpdateCounter(name string, value int64) {
 		 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2`,
 		name, value,
 	)
+}
+
+func (d *Storage) UpdateBatch(metrics []model.Metrics) error {
+	ctx := context.Background()
+
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, m := range metrics {
+		switch m.MType {
+		case model.Gauge:
+			if m.Value != nil {
+				_, err = tx.Exec(ctx,
+					`INSERT INTO metrics (id, type, value)
+					 VALUES ($1, 'gauge', $2)
+					 ON CONFLICT (id) DO UPDATE SET value = $2`,
+					m.ID, *m.Value,
+				)
+			}
+		case model.Counter:
+			if m.Delta != nil {
+				_, err = tx.Exec(ctx,
+					`INSERT INTO metrics (id, type, delta)
+					 VALUES ($1, 'counter', $2)
+					 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2`,
+					m.ID, *m.Delta,
+				)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("exec metric %s: %w", m.ID, err)
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (d *Storage) GetGauge(name string) (float64, bool) {

@@ -96,3 +96,13 @@ func (s *SyncStorage) UpdateCounter(name string, value int64) {
 		logger.Log.Error("Ошибка синхронного сохранения метрик: " + err.Error())
 	}
 }
+
+func (s *SyncStorage) UpdateBatch(metrics []model.Metrics) error {
+	if err := s.Storage.UpdateBatch(metrics); err != nil {
+		return err
+	}
+	if err := Save(s.filePath, s.Storage); err != nil {
+		logger.Log.Error("Ошибка синхронного сохранения метрик: " + err.Error())
+	}
+	return nil
+}

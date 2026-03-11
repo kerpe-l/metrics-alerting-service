@@ -64,39 +64,46 @@ func (s *Stats) Collect() {
 	s.RandomValue = rand.Float64()
 }
 
-func (s *Stats) Send(serverAddr string) {
-	url := serverAddr + "/update/"
+// SendBatch отправляет все метрики одним запросом на /updates/.
+func (s *Stats) SendBatch(serverAddr string) {
+	metrics := make([]model.Metrics, 0, len(s.RuntimeMetrics)+2)
 
 	// 1. Отправляем все Gauge метрики
 	for name, value := range s.RuntimeMetrics {
 		val := value
-		s.sendJSON(url, model.Metrics{ID: name, MType: model.Gauge, Value: &val})
+		metrics = append(metrics, model.Metrics{ID: name, MType: model.Gauge, Value: &val})
 	}
 
 	// 2. Отправляем RandomValue
 	rv := s.RandomValue
-	s.sendJSON(url, model.Metrics{ID: "RandomValue", MType: model.Gauge, Value: &rv})
+	metrics = append(metrics, model.Metrics{ID: "RandomValue", MType: model.Gauge, Value: &rv})
 
 	// 3. Отправляем PollCount
 	pc := s.PollCount
-	s.sendJSON(url, model.Metrics{ID: "PollCount", MType: model.Counter, Delta: &pc})
-}
+	metrics = append(metrics, model.Metrics{ID: "PollCount", MType: model.Counter, Delta: &pc})
 
-func (s *Stats) sendJSON(url string, metric model.Metrics) {
-	body, err := json.Marshal(metric)
-	if err != nil {
-		logger.Log.Info("failed to marshal metric", zap.Error(err))
+	if len(metrics) == 0 {
 		return
 	}
 
-	// Сжимаем тело запроса через gzip
+	s.sendJSON(serverAddr+"/updates/", metrics)
+}
+
+func (s *Stats) sendJSON(url string, body any) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		logger.Log.Info("failed to marshal", zap.Error(err))
+		return
+	}
+
+	// Сжимаем запрос через gzip
 	var buf bytes.Buffer
 	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
 	if err != nil {
 		logger.Log.Info("failed to create gzip writer", zap.Error(err))
 		return
 	}
-	_, err = gz.Write(body)
+	_, err = gz.Write(data)
 	if err != nil {
 		logger.Log.Info("failed to write gzip data", zap.Error(err))
 		return
@@ -114,7 +121,7 @@ func (s *Stats) sendJSON(url string, metric model.Metrics) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		logger.Log.Info("failed to send metric", zap.Error(err))
+		logger.Log.Info("failed to send metrics", zap.Error(err))
 		return
 	}
 	resp.Body.Close()

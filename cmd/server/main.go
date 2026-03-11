@@ -115,6 +115,7 @@ func main() {
 	r.Get("/value/{type}/{name}", h.ValueHandler)
 	r.Post("/update/", h.UpdateJSONHandler)
 	r.Post("/value/", h.ValueJSONHandler)
+	r.Post("/updates/", h.UpdateBatchHandler)
 	r.Get("/ping", h.PingDB)
 
 	logger.Log.Info("Сервер запущен на " + *addr)
