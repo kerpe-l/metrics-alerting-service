@@ -61,11 +61,11 @@ func TestStats_Collect(t *testing.T) {
 	}
 }
 
-func TestStats_Send(t *testing.T) {
+func TestStats_SendBatch(t *testing.T) {
 	var received []model.Metrics
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/update/", r.URL.Path)
+		assert.Equal(t, "/updates/", r.URL.Path)
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
@@ -76,9 +76,8 @@ func TestStats_Send(t *testing.T) {
 		}
 		defer gz.Close()
 
-		var m model.Metrics
-		if err := json.NewDecoder(gz).Decode(&m); err == nil {
-			received = append(received, m)
+		if err := json.NewDecoder(gz).Decode(&received); err != nil {
+			t.Fatalf("failed to decode batch: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -86,7 +85,7 @@ func TestStats_Send(t *testing.T) {
 
 	s := NewStats()
 	s.Collect()
-	s.Send(server.URL)
+	s.SendBatch(server.URL)
 
 	expectedCount := len(s.RuntimeMetrics) + 2 // gauges + RandomValue + PollCount
 	assert.Equal(t, expectedCount, len(received))
