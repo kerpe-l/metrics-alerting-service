@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
+	"github.com/kerpe-l/metrics-alerting-service/internal/retry"
 )
 
 type Stats struct {
@@ -110,19 +112,32 @@ func (s *Stats) sendJSON(url string, body any) {
 	}
 	gz.Close()
 
-	req, err := http.NewRequest(http.MethodPost, url, &buf)
-	if err != nil {
-		logger.Log.Info("failed to create request", zap.Error(err))
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "gzip")
+	compressed := buf.Bytes()
 
-	resp, err := http.DefaultClient.Do(req)
+	err = retry.Do(func() error {
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(compressed))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= http.StatusInternalServerError {
+			return fmt.Errorf("server returned %d", resp.StatusCode)
+		}
+		return nil
+	}, func(err error) bool {
+		// Любая сетевая ошибка или 5xx — retriable
+		return true
+	})
 	if err != nil {
 		logger.Log.Info("failed to send metrics", zap.Error(err))
-		return
 	}
-	resp.Body.Close()
 }
