@@ -1,21 +1,19 @@
 package database
 
 import (
-	"embed"
 	"errors"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-)
 
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
+	"github.com/kerpe-l/metrics-alerting-service/migrations"
+)
 
 // RunMigrations применяет все миграции к базе данных.
 // dsn — строка подключения вида "postgres://user:pass@host:5432/db".
 func RunMigrations(dsn string) error {
-	source, err := iofs.New(migrationsFS, "migrations")
+	source, err := iofs.New(migrations.FS, ".")
 	if err != nil {
 		return err
 	}
