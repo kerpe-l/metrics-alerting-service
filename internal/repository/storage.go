@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"maps"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 type Storage interface {
 	UpdateGauge(name string, value float64)
 	UpdateCounter(name string, value int64)
-	UpdateBatch(metrics []model.Metrics) error
+	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
 	GetAll() (map[string]float64, map[string]int64)
@@ -41,7 +42,7 @@ func (ms *MemStorage) UpdateCounter(name string, value int64) {
 	ms.counters[name] += value
 }
 
-func (ms *MemStorage) UpdateBatch(metrics []model.Metrics) error {
+func (ms *MemStorage) UpdateBatch(_ context.Context, metrics []model.Metrics) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 

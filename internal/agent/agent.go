@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -130,7 +131,8 @@ func (s *Stats) sendJSON(url string, body any) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusInternalServerError {
-			return fmt.Errorf("server returned %d", resp.StatusCode)
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("server returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
 		}
 		return nil
 	}, func(err error) bool {

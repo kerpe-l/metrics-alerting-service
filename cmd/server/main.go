@@ -17,6 +17,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/file"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/pg"
+	"github.com/kerpe-l/metrics-alerting-service/internal/service"
 )
 
 func main() {
@@ -104,7 +105,8 @@ func main() {
 		logger.Log.Info("Хранение метрик: память/файл")
 	}
 
-	h := &handler.MetricsHandler{Storage: st, DB: dbPool}
+	svc := service.NewMetricsService(st)
+	h := &handler.MetricsHandler{Service: svc, DB: dbPool}
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)

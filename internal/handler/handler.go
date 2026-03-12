@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,12 +10,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
-	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
+	"github.com/kerpe-l/metrics-alerting-service/internal/service"
 )
 
 type MetricsHandler struct {
-	Storage repository.Storage
+	Service service.MetricsService
 	DB      *pgxpool.Pool
 }
 
@@ -23,25 +25,31 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	mName := chi.URLParam(r, "name")
 	mValue := chi.URLParam(r, "value")
 
+	var value float64
+	var delta int64
+
 	switch mType {
 	case model.Gauge:
-		val, err := strconv.ParseFloat(mValue, 64)
+		v, err := strconv.ParseFloat(mValue, 64)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		h.Storage.UpdateGauge(mName, val)
-
+		value = v
 	case model.Counter:
-		val, err := strconv.ParseInt(mValue, 10, 64)
+		v, err := strconv.ParseInt(mValue, 10, 64)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		h.Storage.UpdateCounter(mName, val)
-
+		delta = v
 	default:
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Service.Update(mName, mType, value, delta); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -52,27 +60,13 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
 	mName := chi.URLParam(r, "name")
 
-	switch mType {
-	case model.Gauge:
-		val, ok := h.Storage.GetGauge(mName)
-		if !ok {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
-		}
-		w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
-
-	case model.Counter:
-		val, ok := h.Storage.GetCounter(mName)
-		if !ok {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
-		}
-		w.Write([]byte(strconv.FormatInt(val, 10)))
-
-	default:
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	result, err := h.Service.GetValue(mName, mType)
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
+
+	w.Write([]byte(result))
 }
 
 func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Request) {
@@ -83,45 +77,14 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if metric.ID == "" {
-		http.Error(w, "metric ID is required", http.StatusNotFound)
-		return
-	}
-
-	switch metric.MType {
-	case model.Gauge:
-		if metric.Value == nil {
-			http.Error(w, "value is required for gauge", http.StatusBadRequest)
-			return
-		}
-		h.Storage.UpdateGauge(metric.ID, *metric.Value)
-		val, ok := h.Storage.GetGauge(metric.ID)
-		if !ok {
-			http.Error(w, "failed to get gauge after update", http.StatusInternalServerError)
-			return
-		}
-		metric.Value = &val
-
-	case model.Counter:
-		if metric.Delta == nil {
-			http.Error(w, "delta is required for counter", http.StatusBadRequest)
-			return
-		}
-		h.Storage.UpdateCounter(metric.ID, *metric.Delta)
-		val, ok := h.Storage.GetCounter(metric.ID)
-		if !ok {
-			http.Error(w, "failed to get counter after update", http.StatusInternalServerError)
-			return
-		}
-		metric.Delta = &val
-
-	default:
-		http.Error(w, "unknown metric type", http.StatusBadRequest)
+	updated, err := h.Service.UpdateJSON(metric)
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(metric); err != nil {
+	if err := json.NewEncoder(w).Encode(updated); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -135,35 +98,14 @@ func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if metric.ID == "" {
-		http.Error(w, "metric ID is required", http.StatusNotFound)
-		return
-	}
-
-	switch metric.MType {
-	case model.Gauge:
-		val, ok := h.Storage.GetGauge(metric.ID)
-		if !ok {
-			http.Error(w, "metric not found", http.StatusNotFound)
-			return
-		}
-		metric.Value = &val
-
-	case model.Counter:
-		val, ok := h.Storage.GetCounter(metric.ID)
-		if !ok {
-			http.Error(w, "metric not found", http.StatusNotFound)
-			return
-		}
-		metric.Delta = &val
-
-	default:
-		http.Error(w, "unknown metric type", http.StatusBadRequest)
+	result, err := h.Service.GetJSON(metric)
+	if err != nil {
+		writeServiceError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(metric); err != nil {
+	if err := json.NewEncoder(w).Encode(result); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -178,13 +120,8 @@ func (h *MetricsHandler) UpdateBatchHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if len(metrics) == 0 {
-		http.Error(w, "empty batch", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.Storage.UpdateBatch(metrics); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.Service.UpdateBatch(r.Context(), metrics); err != nil {
+		writeServiceError(w, err)
 		return
 	}
 
@@ -206,7 +143,7 @@ func (h *MetricsHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 
 // RootHandler отдает HTML со списком всех метрик
 func (h *MetricsHandler) RootHandler(w http.ResponseWriter, r *http.Request) {
-	gauges, counters := h.Storage.GetAll()
+	gauges, counters := h.Service.GetAll()
 
 	w.Header().Set("Content-Type", "text/html")
 	html := "<html><body><h1>Metrics</h1><ul>"
@@ -220,4 +157,22 @@ func (h *MetricsHandler) RootHandler(w http.ResponseWriter, r *http.Request) {
 
 	html += "</ul></body></html>"
 	w.Write([]byte(html))
+}
+
+// writeServiceError маппит ошибки сервиса на HTTP статус-коды.
+func writeServiceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, service.ErrMetricNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, service.ErrEmptyID):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, service.ErrInvalidType),
+		errors.Is(err, service.ErrMissingValue),
+		errors.Is(err, service.ErrMissingDelta),
+		errors.Is(err, service.ErrEmptyBatch):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	default:
+		logger.Log.Error("internal server error: " + err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

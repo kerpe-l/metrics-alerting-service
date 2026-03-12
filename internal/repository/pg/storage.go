@@ -36,9 +36,9 @@ func isRetriablePgError(err error) bool {
 func (d *Storage) UpdateGauge(name string, value float64) {
 	retry.Do(func() error {
 		_, err := d.pool.Exec(context.Background(),
-			`INSERT INTO metrics (id, type, value)
-			 VALUES ($1, 'gauge', $2)
-			 ON CONFLICT (id) DO UPDATE SET value = $2`,
+			`INSERT INTO metrics (id, type, value, updated_at)
+			 VALUES ($1, 'gauge', $2, NOW())
+			 ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
 			name, value,
 		)
 		return err
@@ -48,19 +48,17 @@ func (d *Storage) UpdateGauge(name string, value float64) {
 func (d *Storage) UpdateCounter(name string, value int64) {
 	retry.Do(func() error {
 		_, err := d.pool.Exec(context.Background(),
-			`INSERT INTO metrics (id, type, delta)
-			 VALUES ($1, 'counter', $2)
-			 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2`,
+			`INSERT INTO metrics (id, type, delta, updated_at)
+			 VALUES ($1, 'counter', $2, NOW())
+			 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2, updated_at = NOW()`,
 			name, value,
 		)
 		return err
 	}, isRetriablePgError)
 }
 
-func (d *Storage) UpdateBatch(metrics []model.Metrics) error {
+func (d *Storage) UpdateBatch(ctx context.Context, metrics []model.Metrics) error {
 	return retry.Do(func() error {
-		ctx := context.Background()
-
 		tx, err := d.pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
@@ -72,18 +70,18 @@ func (d *Storage) UpdateBatch(metrics []model.Metrics) error {
 			case model.Gauge:
 				if m.Value != nil {
 					_, err = tx.Exec(ctx,
-						`INSERT INTO metrics (id, type, value)
-						 VALUES ($1, 'gauge', $2)
-						 ON CONFLICT (id) DO UPDATE SET value = $2`,
+						`INSERT INTO metrics (id, type, value, updated_at)
+						 VALUES ($1, 'gauge', $2, NOW())
+						 ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
 						m.ID, *m.Value,
 					)
 				}
 			case model.Counter:
 				if m.Delta != nil {
 					_, err = tx.Exec(ctx,
-						`INSERT INTO metrics (id, type, delta)
-						 VALUES ($1, 'counter', $2)
-						 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2`,
+						`INSERT INTO metrics (id, type, delta, updated_at)
+						 VALUES ($1, 'counter', $2, NOW())
+						 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2, updated_at = NOW()`,
 						m.ID, *m.Delta,
 					)
 				}

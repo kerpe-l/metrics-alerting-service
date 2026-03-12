@@ -1,6 +1,11 @@
 package retry
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
+)
 
 // delays — интервалы между повторными попытками
 var delays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
@@ -12,10 +17,11 @@ func Do(fn func() error, isRetriable func(error) bool) error {
 		return nil
 	}
 
-	for _, delay := range delays {
+	for i, delay := range delays {
 		if !isRetriable(err) {
 			return err
 		}
+		logger.Log.Warn(fmt.Sprintf("retry: attempt %d/%d failed: %v, retrying in %v", i+1, len(delays), err, delay))
 		time.Sleep(delay)
 		err = fn()
 		if err == nil {

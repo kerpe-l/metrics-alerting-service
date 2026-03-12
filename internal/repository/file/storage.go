@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 
@@ -97,8 +98,8 @@ func (s *SyncStorage) UpdateCounter(name string, value int64) {
 	}
 }
 
-func (s *SyncStorage) UpdateBatch(metrics []model.Metrics) error {
-	if err := s.Storage.UpdateBatch(metrics); err != nil {
+func (s *SyncStorage) UpdateBatch(ctx context.Context, metrics []model.Metrics) error {
+	if err := s.Storage.UpdateBatch(ctx, metrics); err != nil {
 		return err
 	}
 	if err := Save(s.filePath, s.Storage); err != nil {
