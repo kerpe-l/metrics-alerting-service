@@ -40,13 +40,12 @@ func NewMetricsService(repo repository.Storage) MetricsService {
 func (s *metricsService) Update(name, mType string, value float64, delta int64) error {
 	switch mType {
 	case model.Gauge:
-		s.repo.UpdateGauge(name, value)
+		return s.repo.UpdateGauge(name, value)
 	case model.Counter:
-		s.repo.UpdateCounter(name, delta)
+		return s.repo.UpdateCounter(name, delta)
 	default:
 		return ErrInvalidType
 	}
-	return nil
 }
 
 func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error) {
@@ -59,7 +58,9 @@ func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error)
 		if metric.Value == nil {
 			return metric, ErrMissingValue
 		}
-		s.repo.UpdateGauge(metric.ID, *metric.Value)
+		if err := s.repo.UpdateGauge(metric.ID, *metric.Value); err != nil {
+			return metric, err
+		}
 		val, ok := s.repo.GetGauge(metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound
@@ -70,7 +71,9 @@ func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error)
 		if metric.Delta == nil {
 			return metric, ErrMissingDelta
 		}
-		s.repo.UpdateCounter(metric.ID, *metric.Delta)
+		if err := s.repo.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+			return metric, err
+		}
 		val, ok := s.repo.GetCounter(metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound

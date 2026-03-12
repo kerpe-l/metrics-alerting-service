@@ -39,10 +39,11 @@ func newTestHandler() *MetricsHandler {
 	return &MetricsHandler{Service: svc}
 }
 
-func newTestHandlerWithData() *MetricsHandler {
+func newTestHandlerWithData(t *testing.T) *MetricsHandler {
+	t.Helper()
 	storage := repository.NewMemStorage()
-	storage.UpdateGauge("existingGauge", 123.45)
-	storage.UpdateCounter("existingCounter", 100)
+	require.NoError(t, storage.UpdateGauge("existingGauge", 123.45))
+	require.NoError(t, storage.UpdateCounter("existingCounter", 100))
 	svc := service.NewMetricsService(storage)
 	return &MetricsHandler{Service: svc}
 }
@@ -118,7 +119,7 @@ func TestMetricsHandler_UpdateHandler(t *testing.T) {
 }
 
 func TestMetricsHandler_ValueHandler(t *testing.T) {
-	h := newTestHandlerWithData()
+	h := newTestHandlerWithData(t)
 
 	r := chi.NewRouter()
 	r.Get("/value/{type}/{name}", h.ValueHandler)
@@ -198,7 +199,7 @@ func TestMetricsHandler_PingDB(t *testing.T) {
 
 func TestMetricsHandler_RootHandler(t *testing.T) {
 	storage := repository.NewMemStorage()
-	storage.UpdateCounter("testCounter", 5)
+	require.NoError(t, storage.UpdateCounter("testCounter", 5))
 	svc := service.NewMetricsService(storage)
 	h := &MetricsHandler{Service: svc}
 
@@ -337,7 +338,7 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 }
 
 func TestMetricsHandler_ValueJSONHandler(t *testing.T) {
-	h := newTestHandlerWithData()
+	h := newTestHandlerWithData(t)
 
 	r := chi.NewRouter()
 	r.Post("/value/", h.ValueJSONHandler)

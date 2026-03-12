@@ -33,8 +33,8 @@ func isRetriablePgError(err error) bool {
 	return false
 }
 
-func (d *Storage) UpdateGauge(name string, value float64) {
-	retry.Do(func() error {
+func (d *Storage) UpdateGauge(name string, value float64) error {
+	return retry.Do(func() error {
 		_, err := d.pool.Exec(context.Background(),
 			`INSERT INTO metrics (id, type, value, updated_at)
 			 VALUES ($1, 'gauge', $2, NOW())
@@ -45,8 +45,8 @@ func (d *Storage) UpdateGauge(name string, value float64) {
 	}, isRetriablePgError)
 }
 
-func (d *Storage) UpdateCounter(name string, value int64) {
-	retry.Do(func() error {
+func (d *Storage) UpdateCounter(name string, value int64) error {
+	return retry.Do(func() error {
 		_, err := d.pool.Exec(context.Background(),
 			`INSERT INTO metrics (id, type, delta, updated_at)
 			 VALUES ($1, 'counter', $2, NOW())

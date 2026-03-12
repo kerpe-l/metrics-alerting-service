@@ -58,11 +58,15 @@ func Load(filename string, storage repository.Storage) error {
 		switch m.MType {
 		case model.Gauge:
 			if m.Value != nil {
-				storage.UpdateGauge(m.ID, *m.Value)
+				if err := storage.UpdateGauge(m.ID, *m.Value); err != nil {
+					return err
+				}
 			}
 		case model.Counter:
 			if m.Delta != nil {
-				storage.UpdateCounter(m.ID, *m.Delta)
+				if err := storage.UpdateCounter(m.ID, *m.Delta); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -84,18 +88,18 @@ func NewSyncStorage(storage repository.Storage, filePath string) *SyncStorage {
 	}
 }
 
-func (s *SyncStorage) UpdateGauge(name string, value float64) {
-	s.Storage.UpdateGauge(name, value)
-	if err := Save(s.filePath, s.Storage); err != nil {
-		logger.Log.Error("Ошибка синхронного сохранения метрик: " + err.Error())
+func (s *SyncStorage) UpdateGauge(name string, value float64) error {
+	if err := s.Storage.UpdateGauge(name, value); err != nil {
+		return err
 	}
+	return Save(s.filePath, s.Storage)
 }
 
-func (s *SyncStorage) UpdateCounter(name string, value int64) {
-	s.Storage.UpdateCounter(name, value)
-	if err := Save(s.filePath, s.Storage); err != nil {
-		logger.Log.Error("Ошибка синхронного сохранения метрик: " + err.Error())
+func (s *SyncStorage) UpdateCounter(name string, value int64) error {
+	if err := s.Storage.UpdateCounter(name, value); err != nil {
+		return err
 	}
+	return Save(s.filePath, s.Storage)
 }
 
 func (s *SyncStorage) UpdateBatch(ctx context.Context, metrics []model.Metrics) error {

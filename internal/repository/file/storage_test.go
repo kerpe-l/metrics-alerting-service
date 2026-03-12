@@ -15,10 +15,10 @@ import (
 
 func TestSave(t *testing.T) {
 	storage := repository.NewMemStorage()
-	storage.UpdateGauge("Temperature", 36.6)
-	storage.UpdateGauge("Pressure", 760.0)
-	storage.UpdateCounter("Requests", 100)
-	storage.UpdateCounter("Errors", 5)
+	require.NoError(t, storage.UpdateGauge("Temperature", 36.6))
+	require.NoError(t, storage.UpdateGauge("Pressure", 760.0))
+	require.NoError(t, storage.UpdateCounter("Requests", 100))
+	require.NoError(t, storage.UpdateCounter("Errors", 5))
 
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
@@ -83,8 +83,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 
 	// сохраняем
 	original := repository.NewMemStorage()
-	original.UpdateGauge("Alloc", 123456.78)
-	original.UpdateCounter("PollCount", 99)
+	require.NoError(t, original.UpdateGauge("Alloc", 123456.78))
+	require.NoError(t, original.UpdateCounter("PollCount", 99))
 
 	require.NoError(t, Save(path, original))
 
