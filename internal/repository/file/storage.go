@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
@@ -39,7 +40,25 @@ func Save(ctx context.Context, filename string, storage repository.Storage) erro
 		return err
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	// Атомарная запись: пишем во временный файл, затем переименовываем.
+	dir := filepath.Dir(filename)
+	tmp, err := os.CreateTemp(dir, "metrics-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+
+	return os.Rename(tmpName, filename)
 }
 
 // Load загружает метрики из файла и помещает их в хранилище.
