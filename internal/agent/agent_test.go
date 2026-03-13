@@ -12,25 +12,25 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
-func TestNewStats(t *testing.T) {
+func TestNewCollector(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
 		{
-			name: "Инициализация пустого хранилища",
+			name: "Инициализация пустого коллектора",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewStats()
+			got := NewCollector()
 			assert.NotNil(t, got)
-			assert.NotNil(t, got.RuntimeMetrics)
-			assert.Equal(t, int64(0), got.PollCount)
+			assert.NotNil(t, got.runtimeMetrics)
+			assert.Equal(t, int64(0), got.pollCount)
 		})
 	}
 }
 
-func TestStats_Collect(t *testing.T) {
+func TestCollector_Collect(t *testing.T) {
 	tests := []struct {
 		name          string
 		iterations    int
@@ -49,19 +49,43 @@ func TestStats_Collect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewStats()
+			c := NewCollector()
 			for i := 0; i < tt.iterations; i++ {
-				s.Collect()
+				c.Collect()
 			}
 
-			assert.Equal(t, tt.wantPollCount, s.PollCount)
-			assert.NotEmpty(t, s.RuntimeMetrics)
-			assert.Contains(t, s.RuntimeMetrics, "Alloc")
+			assert.Equal(t, tt.wantPollCount, c.pollCount)
+			assert.NotEmpty(t, c.runtimeMetrics)
+			assert.Contains(t, c.runtimeMetrics, "Alloc")
 		})
 	}
 }
 
-func TestStats_SendBatch(t *testing.T) {
+func TestCollector_Metrics(t *testing.T) {
+	c := NewCollector()
+	c.Collect()
+
+	metrics := c.Metrics()
+
+	expectedCount := len(c.runtimeMetrics) + 2 // gauges + RandomValue + PollCount
+	assert.Equal(t, expectedCount, len(metrics))
+
+	var foundPollCount bool
+	for _, m := range metrics {
+		assert.NotEmpty(t, m.ID)
+		if m.ID == "PollCount" {
+			assert.Equal(t, model.Counter, m.MType)
+			assert.NotNil(t, m.Delta)
+			foundPollCount = true
+		} else {
+			assert.Equal(t, model.Gauge, m.MType)
+			assert.NotNil(t, m.Value)
+		}
+	}
+	assert.True(t, foundPollCount)
+}
+
+func TestSender_Send(t *testing.T) {
 	var received []model.Metrics
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,11 +107,13 @@ func TestStats_SendBatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	s := NewStats()
-	s.Collect()
-	s.SendBatch(server.URL)
+	c := NewCollector()
+	c.Collect()
 
-	expectedCount := len(s.RuntimeMetrics) + 2 // gauges + RandomValue + PollCount
+	s := NewSender(server.URL)
+	s.Send(c.Metrics())
+
+	expectedCount := len(c.runtimeMetrics) + 2 // gauges + RandomValue + PollCount
 	assert.Equal(t, expectedCount, len(received))
 
 	var foundPollCount bool

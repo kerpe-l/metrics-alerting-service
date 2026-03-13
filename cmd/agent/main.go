@@ -23,7 +23,8 @@ func main() {
 
 	serverAddr := fmt.Sprintf("http://%s", cfg.Address)
 
-	s := agent.NewStats()
+	collector := agent.NewCollector()
+	sender := agent.NewSender(serverAddr)
 
 	pollTicker := time.NewTicker(pollDuration)
 	reportTicker := time.NewTicker(reportDuration)
@@ -40,12 +41,12 @@ func main() {
 	for {
 		select {
 		case <-pollTicker.C:
-			s.Collect()
+			collector.Collect()
 			logger.Log.Info("Метрики собраны")
 
 		case <-reportTicker.C:
 			logger.Log.Info("Отправка метрик...")
-			s.SendBatch(serverAddr)
+			sender.Send(collector.Metrics())
 		}
 	}
 }
