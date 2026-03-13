@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -22,33 +20,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("a", "localhost:8080", "address and port to run server")
-	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
-	fileStoragePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
-	restore := flag.Bool("r", true, "restore metrics from file on start")
-	databaseDSN := flag.String("d", "", "database connection string")
-
-	flag.Parse()
-
-	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
-		*addr = envAddr
-	}
-	if envInterval := os.Getenv("STORE_INTERVAL"); envInterval != "" {
-		if v, err := strconv.Atoi(envInterval); err == nil {
-			*storeInterval = v
-		}
-	}
-	if envPath := os.Getenv("FILE_STORAGE_PATH"); envPath != "" {
-		*fileStoragePath = envPath
-	}
-	if envRestore := os.Getenv("RESTORE"); envRestore != "" {
-		if v, err := strconv.ParseBool(envRestore); err == nil {
-			*restore = v
-		}
-	}
-	if envDSN := os.Getenv("DATABASE_DSN"); envDSN != "" {
-		*databaseDSN = envDSN
-	}
+	cfg := config.NewServerConfig()
 
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)
@@ -56,13 +28,13 @@ func main() {
 
 	var st repository.Storage
 
-	if *databaseDSN != "" {
+	if cfg.DatabaseDSN != "" {
 		// Режим БД
-		if err := database.RunMigrations(*databaseDSN); err != nil {
+		if err := database.RunMigrations(cfg.DatabaseDSN); err != nil {
 			logger.Log.Fatal("Ошибка миграции БД: " + err.Error())
 		}
 
-		pool, err := pgxpool.New(context.Background(), *databaseDSN)
+		pool, err := pgxpool.New(context.Background(), cfg.DatabaseDSN)
 		if err != nil {
 			logger.Log.Fatal("Не удалось подключиться к БД: " + err.Error())
 		}
@@ -75,21 +47,21 @@ func main() {
 		storage := repository.NewMemStorage()
 
 		// Восстанавливаем метрики из файла при старте, если задано
-		if *restore && *fileStoragePath != "" {
-			if err := file.Load(context.Background(), *fileStoragePath, storage); err != nil {
+		if cfg.Restore && cfg.FileStoragePath != "" {
+			if err := file.Load(context.Background(), cfg.FileStoragePath, storage); err != nil {
 				logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
 			} else {
-				logger.Log.Info("Метрики загружены из файла " + *fileStoragePath)
+				logger.Log.Info("Метрики загружены из файла " + cfg.FileStoragePath)
 			}
 		}
 
 		// Запускаем периодическое сохранение, если интервал > 0
-		if *storeInterval > 0 && *fileStoragePath != "" {
+		if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
 			go func() {
-				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
+				ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 				defer ticker.Stop()
 				for range ticker.C {
-					if err := file.Save(context.Background(), *fileStoragePath, storage); err != nil {
+					if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
 						logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
 					}
 				}
@@ -98,8 +70,8 @@ func main() {
 
 		// Если интервал == 0, оборачиваем хранилище для синхронной записи
 		st = storage
-		if *storeInterval == 0 && *fileStoragePath != "" {
-			st = file.NewSyncStorage(storage, *fileStoragePath)
+		if cfg.StoreInterval == 0 && cfg.FileStoragePath != "" {
+			st = file.NewSyncStorage(storage, cfg.FileStoragePath)
 		}
 		logger.Log.Info("Хранение метрик: память/файл")
 	}
@@ -119,9 +91,9 @@ func main() {
 	r.Post("/updates/", h.UpdateBatchHandler)
 	r.Get("/ping", h.PingDB)
 
-	logger.Log.Info("Сервер запущен на " + *addr)
+	logger.Log.Info("Сервер запущен на " + cfg.Address)
 
-	err := http.ListenAndServe(*addr, r)
+	err := http.ListenAndServe(cfg.Address, r)
 	if err != nil {
 		logger.Log.Fatal(err.Error())
 	}
