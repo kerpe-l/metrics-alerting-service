@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -26,7 +29,12 @@ func main() {
 		panic(err)
 	}
 
+	// Контекст, отменяемый по SIGINT/SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	var st repository.Storage
+	var onShutdown func() // действия при остановке (сброс метрик в файл)
 
 	if cfg.DatabaseDSN != "" {
 		// Режим БД
@@ -60,9 +68,14 @@ func main() {
 			go func() {
 				ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 				defer ticker.Stop()
-				for range ticker.C {
-					if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
-						logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
+				for {
+					select {
+					case <-ticker.C:
+						if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
+							logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
+						}
+					case <-ctx.Done():
+						return
 					}
 				}
 			}()
@@ -74,6 +87,17 @@ func main() {
 			st = file.NewSyncStorage(storage, cfg.FileStoragePath)
 		}
 		logger.Log.Info("Хранение метрик: память/файл")
+
+		// Финальный сброс метрик в файл при завершении
+		if cfg.FileStoragePath != "" {
+			onShutdown = func() {
+				if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
+					logger.Log.Error("Ошибка сохранения метрик при завершении: " + err.Error())
+				} else {
+					logger.Log.Info("Метрики сохранены в файл " + cfg.FileStoragePath)
+				}
+			}
+		}
 	}
 
 	svc := service.NewMetricsService(st)
@@ -91,10 +115,32 @@ func main() {
 	r.Post("/updates/", h.UpdateBatchHandler)
 	r.Get("/ping", h.PingDB)
 
+	srv := &http.Server{Addr: cfg.Address, Handler: r}
+
+	// Запускаем сервер в горутине
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Log.Fatal(err.Error())
+		}
+	}()
+
 	logger.Log.Info("Сервер запущен на " + cfg.Address)
 
-	err := http.ListenAndServe(cfg.Address, r)
-	if err != nil {
-		logger.Log.Fatal(err.Error())
+	// Ждём сигнал завершения
+	<-ctx.Done()
+	logger.Log.Info("Получен сигнал завершения, останавливаем сервер...")
+
+	// Даём 5 секунд на завершение текущих запросов
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Log.Error("Ошибка при остановке сервера: " + err.Error())
 	}
+
+	if onShutdown != nil {
+		onShutdown()
+	}
+
+	logger.Log.Info("Сервер остановлен")
 }
