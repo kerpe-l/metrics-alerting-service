@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"runtime"
 
 	"go.uber.org/zap"
@@ -16,6 +18,19 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/retry"
 )
+
+// errServerUnavailable — ошибка для 5xx ответов сервера.
+var errServerUnavailable = errors.New("server unavailable")
+
+// isRetriableHTTPError проверяет, стоит ли повторять HTTP-запрос.
+// Retriable: сетевые ошибки (*url.Error) и 5xx ответы сервера.
+func isRetriableHTTPError(err error) bool {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return true
+	}
+	return errors.Is(err, errServerUnavailable)
+}
 
 type Stats struct {
 	RuntimeMetrics map[string]float64
@@ -132,13 +147,10 @@ func (s *Stats) sendJSON(url string, body any) {
 
 		if resp.StatusCode >= http.StatusInternalServerError {
 			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("server returned %d: %s", resp.StatusCode, bytes.TrimSpace(body))
+			return fmt.Errorf("%w: %d %s", errServerUnavailable, resp.StatusCode, bytes.TrimSpace(body))
 		}
 		return nil
-	}, func(err error) bool {
-		// Любая сетевая ошибка или 5xx — retriable
-		return true
-	})
+	}, isRetriableHTTPError)
 	if err != nil {
 		logger.Log.Info("failed to send metrics", zap.Error(err))
 	}
