@@ -33,6 +33,10 @@ func isRetriablePgError(err error) bool {
 	return false
 }
 
+func (d *Storage) Ping(ctx context.Context) error {
+	return d.pool.Ping(ctx)
+}
+
 func (d *Storage) UpdateGauge(ctx context.Context, name string, value float64) error {
 	return retry.Do(func() error {
 		_, err := d.pool.Exec(ctx,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -54,7 +55,6 @@ func main() {
 	}
 
 	var st repository.Storage
-	var dbPool *pgxpool.Pool
 
 	if *databaseDSN != "" {
 		// Режим БД
@@ -67,7 +67,6 @@ func main() {
 			logger.Log.Fatal("Не удалось подключиться к БД: " + err.Error())
 		}
 		defer pool.Close()
-		dbPool = pool
 
 		st = pg.NewStorage(pool)
 		logger.Log.Info("Хранение метрик: PostgreSQL")
@@ -106,7 +105,7 @@ func main() {
 	}
 
 	svc := service.NewMetricsService(st)
-	h := &handler.MetricsHandler{Service: svc, DB: dbPool}
+	h := &handler.MetricsHandler{Service: svc}
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)

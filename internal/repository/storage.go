@@ -2,11 +2,15 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"sync"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
+
+// ErrNoDB означает, что хранилище не поддерживает проверку соединения с БД.
+var ErrNoDB = errors.New("no database connection")
 
 type Storage interface {
 	UpdateGauge(ctx context.Context, name string, value float64) error
@@ -15,6 +19,7 @@ type Storage interface {
 	GetGauge(ctx context.Context, name string) (float64, bool)
 	GetCounter(ctx context.Context, name string) (int64, bool)
 	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
+	Ping(ctx context.Context) error
 }
 
 type MemStorage struct {
@@ -75,6 +80,10 @@ func (ms *MemStorage) GetCounter(_ context.Context, name string) (int64, bool) {
 	defer ms.mu.RUnlock()
 	v, ok := ms.counters[name]
 	return v, ok
+}
+
+func (ms *MemStorage) Ping(_ context.Context) error {
+	return ErrNoDB
 }
 
 func (ms *MemStorage) GetAll(_ context.Context) (map[string]float64, map[string]int64) {

@@ -86,6 +86,20 @@ func (mr *MockMetricsServiceMockRecorder) GetValue(ctx, name, mType any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValue", reflect.TypeOf((*MockMetricsService)(nil).GetValue), ctx, name, mType)
 }
 
+// Ping mocks base method.
+func (m *MockMetricsService) Ping(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ping", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Ping indicates an expected call of Ping.
+func (mr *MockMetricsServiceMockRecorder) Ping(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockMetricsService)(nil).Ping), ctx)
+}
+
 // Update mocks base method.
 func (m *MockMetricsService) Update(ctx context.Context, name, mType string, value float64, delta int64) error {
 	m.ctrl.T.Helper()

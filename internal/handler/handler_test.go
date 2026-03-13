@@ -174,20 +174,41 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 func TestMetricsHandler_PingDB(t *testing.T) {
 	tests := []struct {
 		name     string
-		handler  *MetricsHandler
+		prepare  func(s *smock.MockMetricsService)
 		wantCode int
 	}{
 		{
-			name:     "DB не задана — 500",
-			handler:  &MetricsHandler{Service: service.NewMetricsService(repository.NewMemStorage()), DB: nil},
+			name: "БД доступна — 200",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(nil)
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name: "БД недоступна — 500",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(errors.New("connection refused"))
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+		{
+			name: "Нет БД (MemStorage) — 500",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(repository.ErrNoDB)
+			},
 			wantCode: http.StatusInternalServerError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			svc := smock.NewMockMetricsService(ctrl)
+			tt.prepare(svc)
+
+			h := &MetricsHandler{Service: svc}
 			r := chi.NewRouter()
-			r.Get("/ping", tt.handler.PingDB)
+			r.Get("/ping", h.PingDB)
 
 			ts := httptest.NewServer(r)
 			defer ts.Close()

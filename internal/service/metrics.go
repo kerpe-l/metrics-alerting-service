@@ -26,6 +26,7 @@ type MetricsService interface {
 	GetJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error)
 	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
 	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
+	Ping(ctx context.Context) error
 }
 
 type metricsService struct {
@@ -142,4 +143,8 @@ func (s *metricsService) UpdateBatch(ctx context.Context, metrics []model.Metric
 
 func (s *metricsService) GetAll(ctx context.Context) (map[string]float64, map[string]int64) {
 	return s.repo.GetAll(ctx)
+}
+
+func (s *metricsService) Ping(ctx context.Context) error {
+	return s.repo.Ping(ctx)
 }

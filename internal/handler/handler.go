@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
@@ -17,7 +16,6 @@ import (
 
 type MetricsHandler struct {
 	Service service.MetricsService
-	DB      *pgxpool.Pool
 }
 
 func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
@@ -130,11 +128,7 @@ func (h *MetricsHandler) UpdateBatchHandler(w http.ResponseWriter, r *http.Reque
 
 // PingDB проверяет соединение с базой данных.
 func (h *MetricsHandler) PingDB(w http.ResponseWriter, r *http.Request) {
-	if h.DB == nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if err := h.DB.Ping(r.Context()); err != nil {
+	if err := h.Service.Ping(r.Context()); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
