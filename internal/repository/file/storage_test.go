@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,15 +15,16 @@ import (
 )
 
 func TestSave(t *testing.T) {
+	ctx := context.Background()
 	storage := repository.NewMemStorage()
-	require.NoError(t, storage.UpdateGauge("Temperature", 36.6))
-	require.NoError(t, storage.UpdateGauge("Pressure", 760.0))
-	require.NoError(t, storage.UpdateCounter("Requests", 100))
-	require.NoError(t, storage.UpdateCounter("Errors", 5))
+	require.NoError(t, storage.UpdateGauge(ctx, "Temperature", 36.6))
+	require.NoError(t, storage.UpdateGauge(ctx, "Pressure", 760.0))
+	require.NoError(t, storage.UpdateCounter(ctx, "Requests", 100))
+	require.NoError(t, storage.UpdateCounter(ctx, "Errors", 5))
 
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
-	err := Save(path, storage)
+	err := Save(ctx, path, storage)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(path)
@@ -55,6 +57,7 @@ func TestSave(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
+	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
 	metrics := []model.Metrics{
@@ -66,45 +69,46 @@ func TestLoad(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, data, 0644))
 
 	storage := repository.NewMemStorage()
-	err = Load(path, storage)
+	err = Load(ctx, path, storage)
 	require.NoError(t, err)
 
-	val, ok := storage.GetGauge("CPU")
+	val, ok := storage.GetGauge(ctx, "CPU")
 	assert.True(t, ok)
 	assert.InDelta(t, 55.5, val, 0.001)
 
-	delta, ok := storage.GetCounter("Hits")
+	delta, ok := storage.GetCounter(ctx, "Hits")
 	assert.True(t, ok)
 	assert.Equal(t, int64(42), delta)
 }
 
 func TestSaveAndLoad_RoundTrip(t *testing.T) {
+	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "metrics.json")
 
 	// сохраняем
 	original := repository.NewMemStorage()
-	require.NoError(t, original.UpdateGauge("Alloc", 123456.78))
-	require.NoError(t, original.UpdateCounter("PollCount", 99))
+	require.NoError(t, original.UpdateGauge(ctx, "Alloc", 123456.78))
+	require.NoError(t, original.UpdateCounter(ctx, "PollCount", 99))
 
-	require.NoError(t, Save(path, original))
+	require.NoError(t, Save(ctx, path, original))
 
 	// загружаем в новое хранилище
 	restored := repository.NewMemStorage()
-	require.NoError(t, Load(path, restored))
+	require.NoError(t, Load(ctx, path, restored))
 
 	// сравниваем
-	val, ok := restored.GetGauge("Alloc")
+	val, ok := restored.GetGauge(ctx, "Alloc")
 	assert.True(t, ok)
 	assert.InDelta(t, 123456.78, val, 0.001)
 
-	delta, ok := restored.GetCounter("PollCount")
+	delta, ok := restored.GetCounter(ctx, "PollCount")
 	assert.True(t, ok)
 	assert.Equal(t, int64(99), delta)
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
 	storage := repository.NewMemStorage()
-	err := Load("/nonexistent/path/file.json", storage)
+	err := Load(context.Background(), "/nonexistent/path/file.json", storage)
 	assert.Error(t, err)
 }
 
@@ -113,15 +117,16 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("not json"), 0644))
 
 	storage := repository.NewMemStorage()
-	err := Load(path, storage)
+	err := Load(context.Background(), path, storage)
 	assert.Error(t, err)
 }
 
 func TestSave_EmptyStorage(t *testing.T) {
+	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "empty.json")
 	storage := repository.NewMemStorage()
 
-	require.NoError(t, Save(path, storage))
+	require.NoError(t, Save(ctx, path, storage))
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)

@@ -77,7 +77,7 @@ func main() {
 
 		// Восстанавливаем метрики из файла при старте, если задано
 		if *restore && *fileStoragePath != "" {
-			if err := file.Load(*fileStoragePath, storage); err != nil {
+			if err := file.Load(context.Background(), *fileStoragePath, storage); err != nil {
 				logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
 			} else {
 				logger.Log.Info("Метрики загружены из файла " + *fileStoragePath)
@@ -90,7 +90,7 @@ func main() {
 				ticker := time.NewTicker(time.Duration(*storeInterval) * time.Second)
 				defer ticker.Stop()
 				for range ticker.C {
-					if err := file.Save(*fileStoragePath, storage); err != nil {
+					if err := file.Save(context.Background(), *fileStoragePath, storage); err != nil {
 						logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
 					}
 				}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -42,8 +43,9 @@ func newTestHandler() *MetricsHandler {
 func newTestHandlerWithData(t *testing.T) *MetricsHandler {
 	t.Helper()
 	storage := repository.NewMemStorage()
-	require.NoError(t, storage.UpdateGauge("existingGauge", 123.45))
-	require.NoError(t, storage.UpdateCounter("existingCounter", 100))
+	ctx := context.Background()
+	require.NoError(t, storage.UpdateGauge(ctx, "existingGauge", 123.45))
+	require.NoError(t, storage.UpdateCounter(ctx, "existingCounter", 100))
 	svc := service.NewMetricsService(storage)
 	return &MetricsHandler{Service: svc}
 }
@@ -199,7 +201,7 @@ func TestMetricsHandler_PingDB(t *testing.T) {
 
 func TestMetricsHandler_RootHandler(t *testing.T) {
 	storage := repository.NewMemStorage()
-	require.NoError(t, storage.UpdateCounter("testCounter", 5))
+	require.NoError(t, storage.UpdateCounter(context.Background(), "testCounter", 5))
 	svc := service.NewMetricsService(storage)
 	h := &MetricsHandler{Service: svc}
 
@@ -499,7 +501,7 @@ func TestUpdateJSONHandler_ServiceError(t *testing.T) {
 			name:    "Метрика не найдена после обновления — 404",
 			payload: model.Metrics{ID: "ghost", MType: model.Gauge, Value: ptrFloat64(1.0)},
 			prepare: func(s *smock.MockMetricsService) {
-				s.EXPECT().UpdateJSON(gomock.Any()).Return(model.Metrics{}, service.ErrMetricNotFound)
+				s.EXPECT().UpdateJSON(gomock.Any(), gomock.Any()).Return(model.Metrics{}, service.ErrMetricNotFound)
 			},
 			wantCode: http.StatusNotFound,
 		},
@@ -507,7 +509,7 @@ func TestUpdateJSONHandler_ServiceError(t *testing.T) {
 			name:    "Невалидный тип метрики — 400",
 			payload: model.Metrics{ID: "test", MType: "unknown"},
 			prepare: func(s *smock.MockMetricsService) {
-				s.EXPECT().UpdateJSON(gomock.Any()).Return(model.Metrics{}, service.ErrInvalidType)
+				s.EXPECT().UpdateJSON(gomock.Any(), gomock.Any()).Return(model.Metrics{}, service.ErrInvalidType)
 			},
 			wantCode: http.StatusBadRequest,
 		},

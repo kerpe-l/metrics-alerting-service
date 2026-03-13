@@ -20,12 +20,12 @@ var (
 
 // MetricsService описывает бизнес-логику работы с метриками
 type MetricsService interface {
-	Update(name, mType string, value float64, delta int64) error
-	UpdateJSON(metric model.Metrics) (model.Metrics, error)
-	GetValue(name, mType string) (string, error)
-	GetJSON(metric model.Metrics) (model.Metrics, error)
+	Update(ctx context.Context, name, mType string, value float64, delta int64) error
+	UpdateJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error)
+	GetValue(ctx context.Context, name, mType string) (string, error)
+	GetJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error)
 	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
-	GetAll() (map[string]float64, map[string]int64)
+	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
 }
 
 type metricsService struct {
@@ -37,18 +37,18 @@ func NewMetricsService(repo repository.Storage) MetricsService {
 	return &metricsService{repo: repo}
 }
 
-func (s *metricsService) Update(name, mType string, value float64, delta int64) error {
+func (s *metricsService) Update(ctx context.Context, name, mType string, value float64, delta int64) error {
 	switch mType {
 	case model.Gauge:
-		return s.repo.UpdateGauge(name, value)
+		return s.repo.UpdateGauge(ctx, name, value)
 	case model.Counter:
-		return s.repo.UpdateCounter(name, delta)
+		return s.repo.UpdateCounter(ctx, name, delta)
 	default:
 		return ErrInvalidType
 	}
 }
 
-func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error) {
+func (s *metricsService) UpdateJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error) {
 	if metric.ID == "" {
 		return metric, ErrEmptyID
 	}
@@ -58,10 +58,10 @@ func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error)
 		if metric.Value == nil {
 			return metric, ErrMissingValue
 		}
-		if err := s.repo.UpdateGauge(metric.ID, *metric.Value); err != nil {
+		if err := s.repo.UpdateGauge(ctx, metric.ID, *metric.Value); err != nil {
 			return metric, err
 		}
-		val, ok := s.repo.GetGauge(metric.ID)
+		val, ok := s.repo.GetGauge(ctx, metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound
 		}
@@ -71,10 +71,10 @@ func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error)
 		if metric.Delta == nil {
 			return metric, ErrMissingDelta
 		}
-		if err := s.repo.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+		if err := s.repo.UpdateCounter(ctx, metric.ID, *metric.Delta); err != nil {
 			return metric, err
 		}
-		val, ok := s.repo.GetCounter(metric.ID)
+		val, ok := s.repo.GetCounter(ctx, metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound
 		}
@@ -86,17 +86,17 @@ func (s *metricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error)
 	return metric, nil
 }
 
-func (s *metricsService) GetValue(name, mType string) (string, error) {
+func (s *metricsService) GetValue(ctx context.Context, name, mType string) (string, error) {
 	switch mType {
 	case model.Gauge:
-		val, ok := s.repo.GetGauge(name)
+		val, ok := s.repo.GetGauge(ctx, name)
 		if !ok {
 			return "", ErrMetricNotFound
 		}
 		return strconv.FormatFloat(val, 'f', -1, 64), nil
 
 	case model.Counter:
-		val, ok := s.repo.GetCounter(name)
+		val, ok := s.repo.GetCounter(ctx, name)
 		if !ok {
 			return "", ErrMetricNotFound
 		}
@@ -107,21 +107,21 @@ func (s *metricsService) GetValue(name, mType string) (string, error) {
 	}
 }
 
-func (s *metricsService) GetJSON(metric model.Metrics) (model.Metrics, error) {
+func (s *metricsService) GetJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error) {
 	if metric.ID == "" {
 		return metric, ErrEmptyID
 	}
 
 	switch metric.MType {
 	case model.Gauge:
-		val, ok := s.repo.GetGauge(metric.ID)
+		val, ok := s.repo.GetGauge(ctx, metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound
 		}
 		metric.Value = &val
 
 	case model.Counter:
-		val, ok := s.repo.GetCounter(metric.ID)
+		val, ok := s.repo.GetCounter(ctx, metric.ID)
 		if !ok {
 			return metric, ErrMetricNotFound
 		}
@@ -140,6 +140,6 @@ func (s *metricsService) UpdateBatch(ctx context.Context, metrics []model.Metric
 	return s.repo.UpdateBatch(ctx, metrics)
 }
 
-func (s *metricsService) GetAll() (map[string]float64, map[string]int64) {
-	return s.repo.GetAll()
+func (s *metricsService) GetAll(ctx context.Context) (map[string]float64, map[string]int64) {
+	return s.repo.GetAll(ctx)
 }

@@ -11,8 +11,8 @@ import (
 )
 
 // Save сохраняет все метрики из хранилища в файл в формате JSON.
-func Save(filename string, storage repository.Storage) error {
-	gauges, counters := storage.GetAll()
+func Save(ctx context.Context, filename string, storage repository.Storage) error {
+	gauges, counters := storage.GetAll(ctx)
 
 	metrics := make([]model.Metrics, 0, len(gauges)+len(counters))
 
@@ -43,7 +43,7 @@ func Save(filename string, storage repository.Storage) error {
 }
 
 // Load загружает метрики из файла и помещает их в хранилище.
-func Load(filename string, storage repository.Storage) error {
+func Load(ctx context.Context, filename string, storage repository.Storage) error {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -58,13 +58,13 @@ func Load(filename string, storage repository.Storage) error {
 		switch m.MType {
 		case model.Gauge:
 			if m.Value != nil {
-				if err := storage.UpdateGauge(m.ID, *m.Value); err != nil {
+				if err := storage.UpdateGauge(ctx, m.ID, *m.Value); err != nil {
 					return err
 				}
 			}
 		case model.Counter:
 			if m.Delta != nil {
-				if err := storage.UpdateCounter(m.ID, *m.Delta); err != nil {
+				if err := storage.UpdateCounter(ctx, m.ID, *m.Delta); err != nil {
 					return err
 				}
 			}
@@ -88,25 +88,25 @@ func NewSyncStorage(storage repository.Storage, filePath string) *SyncStorage {
 	}
 }
 
-func (s *SyncStorage) UpdateGauge(name string, value float64) error {
-	if err := s.Storage.UpdateGauge(name, value); err != nil {
+func (s *SyncStorage) UpdateGauge(ctx context.Context, name string, value float64) error {
+	if err := s.Storage.UpdateGauge(ctx, name, value); err != nil {
 		return err
 	}
-	return Save(s.filePath, s.Storage)
+	return Save(ctx, s.filePath, s.Storage)
 }
 
-func (s *SyncStorage) UpdateCounter(name string, value int64) error {
-	if err := s.Storage.UpdateCounter(name, value); err != nil {
+func (s *SyncStorage) UpdateCounter(ctx context.Context, name string, value int64) error {
+	if err := s.Storage.UpdateCounter(ctx, name, value); err != nil {
 		return err
 	}
-	return Save(s.filePath, s.Storage)
+	return Save(ctx, s.filePath, s.Storage)
 }
 
 func (s *SyncStorage) UpdateBatch(ctx context.Context, metrics []model.Metrics) error {
 	if err := s.Storage.UpdateBatch(ctx, metrics); err != nil {
 		return err
 	}
-	if err := Save(s.filePath, s.Storage); err != nil {
+	if err := Save(ctx, s.filePath, s.Storage); err != nil {
 		logger.Log.Error("Ошибка синхронного сохранения метрик: " + err.Error())
 	}
 	return nil

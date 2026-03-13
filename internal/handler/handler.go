@@ -48,7 +48,7 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Service.Update(mName, mType, value, delta); err != nil {
+	if err := h.Service.Update(r.Context(), mName, mType, value, delta); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -60,7 +60,7 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
 	mName := chi.URLParam(r, "name")
 
-	result, err := h.Service.GetValue(mName, mType)
+	result, err := h.Service.GetValue(r.Context(), mName, mType)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -77,7 +77,7 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updated, err := h.Service.UpdateJSON(metric)
+	updated, err := h.Service.UpdateJSON(r.Context(), metric)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -98,7 +98,7 @@ func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := h.Service.GetJSON(metric)
+	result, err := h.Service.GetJSON(r.Context(), metric)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -143,7 +143,7 @@ func (h *MetricsHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 
 // RootHandler отдает HTML со списком всех метрик
 func (h *MetricsHandler) RootHandler(w http.ResponseWriter, r *http.Request) {
-	gauges, counters := h.Service.GetAll()
+	gauges, counters := h.Service.GetAll(r.Context())
 
 	w.Header().Set("Content-Type", "text/html")
 	html := "<html><body><h1>Metrics</h1><ul>"

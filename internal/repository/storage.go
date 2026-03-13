@@ -9,12 +9,12 @@ import (
 )
 
 type Storage interface {
-	UpdateGauge(name string, value float64) error
-	UpdateCounter(name string, value int64) error
+	UpdateGauge(ctx context.Context, name string, value float64) error
+	UpdateCounter(ctx context.Context, name string, value int64) error
 	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
-	GetAll() (map[string]float64, map[string]int64)
+	GetGauge(ctx context.Context, name string) (float64, bool)
+	GetCounter(ctx context.Context, name string) (int64, bool)
+	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
 }
 
 type MemStorage struct {
@@ -30,14 +30,14 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (ms *MemStorage) UpdateGauge(name string, value float64) error {
-	ms.mu.Lock() // блокировка для записи
+func (ms *MemStorage) UpdateGauge(_ context.Context, name string, value float64) error {
+	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.gauges[name] = value
 	return nil
 }
 
-func (ms *MemStorage) UpdateCounter(name string, value int64) error {
+func (ms *MemStorage) UpdateCounter(_ context.Context, name string, value int64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.counters[name] += value
@@ -63,21 +63,21 @@ func (ms *MemStorage) UpdateBatch(_ context.Context, metrics []model.Metrics) er
 	return nil
 }
 
-func (ms *MemStorage) GetGauge(name string) (float64, bool) {
-	ms.mu.RLock() // блокировка для чтения
+func (ms *MemStorage) GetGauge(_ context.Context, name string) (float64, bool) {
+	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	v, ok := ms.gauges[name]
 	return v, ok
 }
 
-func (ms *MemStorage) GetCounter(name string) (int64, bool) {
+func (ms *MemStorage) GetCounter(_ context.Context, name string) (int64, bool) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	v, ok := ms.counters[name]
 	return v, ok
 }
 
-func (ms *MemStorage) GetAll() (map[string]float64, map[string]int64) {
+func (ms *MemStorage) GetAll(_ context.Context) (map[string]float64, map[string]int64) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 

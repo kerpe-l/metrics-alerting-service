@@ -42,62 +42,62 @@ func (m *MockMetricsService) EXPECT() *MockMetricsServiceMockRecorder {
 }
 
 // GetAll mocks base method.
-func (m *MockMetricsService) GetAll() (map[string]float64, map[string]int64) {
+func (m *MockMetricsService) GetAll(ctx context.Context) (map[string]float64, map[string]int64) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAll")
+	ret := m.ctrl.Call(m, "GetAll", ctx)
 	ret0, _ := ret[0].(map[string]float64)
 	ret1, _ := ret[1].(map[string]int64)
 	return ret0, ret1
 }
 
 // GetAll indicates an expected call of GetAll.
-func (mr *MockMetricsServiceMockRecorder) GetAll() *gomock.Call {
+func (mr *MockMetricsServiceMockRecorder) GetAll(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAll", reflect.TypeOf((*MockMetricsService)(nil).GetAll))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAll", reflect.TypeOf((*MockMetricsService)(nil).GetAll), ctx)
 }
 
 // GetJSON mocks base method.
-func (m *MockMetricsService) GetJSON(metric model.Metrics) (model.Metrics, error) {
+func (m *MockMetricsService) GetJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetJSON", metric)
+	ret := m.ctrl.Call(m, "GetJSON", ctx, metric)
 	ret0, _ := ret[0].(model.Metrics)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetJSON indicates an expected call of GetJSON.
-func (mr *MockMetricsServiceMockRecorder) GetJSON(metric any) *gomock.Call {
+func (mr *MockMetricsServiceMockRecorder) GetJSON(ctx, metric any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetJSON", reflect.TypeOf((*MockMetricsService)(nil).GetJSON), metric)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetJSON", reflect.TypeOf((*MockMetricsService)(nil).GetJSON), ctx, metric)
 }
 
 // GetValue mocks base method.
-func (m *MockMetricsService) GetValue(name, mType string) (string, error) {
+func (m *MockMetricsService) GetValue(ctx context.Context, name, mType string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetValue", name, mType)
+	ret := m.ctrl.Call(m, "GetValue", ctx, name, mType)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetValue indicates an expected call of GetValue.
-func (mr *MockMetricsServiceMockRecorder) GetValue(name, mType any) *gomock.Call {
+func (mr *MockMetricsServiceMockRecorder) GetValue(ctx, name, mType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValue", reflect.TypeOf((*MockMetricsService)(nil).GetValue), name, mType)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValue", reflect.TypeOf((*MockMetricsService)(nil).GetValue), ctx, name, mType)
 }
 
 // Update mocks base method.
-func (m *MockMetricsService) Update(name, mType string, value float64, delta int64) error {
+func (m *MockMetricsService) Update(ctx context.Context, name, mType string, value float64, delta int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", name, mType, value, delta)
+	ret := m.ctrl.Call(m, "Update", ctx, name, mType, value, delta)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockMetricsServiceMockRecorder) Update(name, mType, value, delta any) *gomock.Call {
+func (mr *MockMetricsServiceMockRecorder) Update(ctx, name, mType, value, delta any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsService)(nil).Update), name, mType, value, delta)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMetricsService)(nil).Update), ctx, name, mType, value, delta)
 }
 
 // UpdateBatch mocks base method.
@@ -115,16 +115,16 @@ func (mr *MockMetricsServiceMockRecorder) UpdateBatch(ctx, metrics any) *gomock.
 }
 
 // UpdateJSON mocks base method.
-func (m *MockMetricsService) UpdateJSON(metric model.Metrics) (model.Metrics, error) {
+func (m *MockMetricsService) UpdateJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateJSON", metric)
+	ret := m.ctrl.Call(m, "UpdateJSON", ctx, metric)
 	ret0, _ := ret[0].(model.Metrics)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateJSON indicates an expected call of UpdateJSON.
-func (mr *MockMetricsServiceMockRecorder) UpdateJSON(metric any) *gomock.Call {
+func (mr *MockMetricsServiceMockRecorder) UpdateJSON(ctx, metric any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateJSON", reflect.TypeOf((*MockMetricsService)(nil).UpdateJSON), metric)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateJSON", reflect.TypeOf((*MockMetricsService)(nil).UpdateJSON), ctx, metric)
 }

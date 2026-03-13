@@ -33,9 +33,9 @@ func isRetriablePgError(err error) bool {
 	return false
 }
 
-func (d *Storage) UpdateGauge(name string, value float64) error {
+func (d *Storage) UpdateGauge(ctx context.Context, name string, value float64) error {
 	return retry.Do(func() error {
-		_, err := d.pool.Exec(context.Background(),
+		_, err := d.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, value, updated_at)
 			 VALUES ($1, 'gauge', $2, NOW())
 			 ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
@@ -45,9 +45,9 @@ func (d *Storage) UpdateGauge(name string, value float64) error {
 	}, isRetriablePgError)
 }
 
-func (d *Storage) UpdateCounter(name string, value int64) error {
+func (d *Storage) UpdateCounter(ctx context.Context, name string, value int64) error {
 	return retry.Do(func() error {
-		_, err := d.pool.Exec(context.Background(),
+		_, err := d.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, delta, updated_at)
 			 VALUES ($1, 'counter', $2, NOW())
 			 ON CONFLICT (id) DO UPDATE SET delta = metrics.delta + $2, updated_at = NOW()`,
@@ -95,10 +95,10 @@ func (d *Storage) UpdateBatch(ctx context.Context, metrics []model.Metrics) erro
 	}, isRetriablePgError)
 }
 
-func (d *Storage) GetGauge(name string) (float64, bool) {
+func (d *Storage) GetGauge(ctx context.Context, name string) (float64, bool) {
 	var val float64
 	err := retry.Do(func() error {
-		return d.pool.QueryRow(context.Background(),
+		return d.pool.QueryRow(ctx,
 			`SELECT value FROM metrics WHERE id = $1 AND type = 'gauge'`,
 			name,
 		).Scan(&val)
@@ -109,10 +109,10 @@ func (d *Storage) GetGauge(name string) (float64, bool) {
 	return val, true
 }
 
-func (d *Storage) GetCounter(name string) (int64, bool) {
+func (d *Storage) GetCounter(ctx context.Context, name string) (int64, bool) {
 	var val int64
 	err := retry.Do(func() error {
-		return d.pool.QueryRow(context.Background(),
+		return d.pool.QueryRow(ctx,
 			`SELECT delta FROM metrics WHERE id = $1 AND type = 'counter'`,
 			name,
 		).Scan(&val)
@@ -123,12 +123,12 @@ func (d *Storage) GetCounter(name string) (int64, bool) {
 	return val, true
 }
 
-func (d *Storage) GetAll() (map[string]float64, map[string]int64) {
+func (d *Storage) GetAll(ctx context.Context) (map[string]float64, map[string]int64) {
 	gauges := make(map[string]float64)
 	counters := make(map[string]int64)
 
 	err := retry.Do(func() error {
-		rows, err := d.pool.Query(context.Background(),
+		rows, err := d.pool.Query(ctx,
 			`SELECT id, type, delta, value FROM metrics`,
 		)
 		if err != nil {
