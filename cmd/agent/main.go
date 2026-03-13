@@ -1,49 +1,30 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
+	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 )
 
 func main() {
-	addr := flag.String("a", "localhost:8080", "address and port of metrics server")
-	reportInterval := flag.Int("r", 10, "report interval in seconds")
-	pollInterval := flag.Int("p", 2, "poll interval in seconds")
-
-	flag.Parse()
-
-	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
-		*addr = envAddr
-	}
-	if envReport := os.Getenv("REPORT_INTERVAL"); envReport != "" {
-		if v, err := strconv.Atoi(envReport); err == nil {
-			*reportInterval = v
-		}
-	}
-	if envPoll := os.Getenv("POLL_INTERVAL"); envPoll != "" {
-		if v, err := strconv.Atoi(envPoll); err == nil {
-			*pollInterval = v
-		}
-	}
+	cfg := config.NewAgentConfig()
 
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)
 	}
 
-	reportDuration := time.Duration(*reportInterval) * time.Second
-	pollDuration := time.Duration(*pollInterval) * time.Second
+	reportDuration := time.Duration(cfg.ReportInterval) * time.Second
+	pollDuration := time.Duration(cfg.PollInterval) * time.Second
 
-	serverAddr := fmt.Sprintf("http://%s", *addr)
+	serverAddr := fmt.Sprintf("http://%s", cfg.Address)
 
-	s := agent.NewStats()
+	collector := agent.NewCollector()
+	sender := agent.NewSender(serverAddr)
 
 	pollTicker := time.NewTicker(pollDuration)
 	reportTicker := time.NewTicker(reportDuration)
@@ -60,12 +41,12 @@ func main() {
 	for {
 		select {
 		case <-pollTicker.C:
-			s.Collect()
+			collector.Collect()
 			logger.Log.Info("Метрики собраны")
 
 		case <-reportTicker.C:
 			logger.Log.Info("Отправка метрик...")
-			s.Send(serverAddr)
+			sender.Send(collector.Metrics())
 		}
 	}
 }

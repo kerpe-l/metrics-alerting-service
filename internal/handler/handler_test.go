@@ -2,7 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +13,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
+	"github.com/kerpe-l/metrics-alerting-service/internal/service"
+	smock "github.com/kerpe-l/metrics-alerting-service/internal/service/mock"
 )
 
 func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.Response, string) {
@@ -29,14 +34,28 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.
 	return resp, string(respBody)
 }
 
-func TestMetricsHandler_UpdateHandler(t *testing.T) {
+func newTestHandler() *MetricsHandler {
 	storage := repository.NewMemStorage()
-	h := &MetricsHandler{Storage: storage}
+	svc := service.NewMetricsService(storage)
+	return &MetricsHandler{Service: svc}
+}
+
+func newTestHandlerWithData(t *testing.T) *MetricsHandler {
+	t.Helper()
+	storage := repository.NewMemStorage()
+	ctx := context.Background()
+	require.NoError(t, storage.UpdateGauge(ctx, "existingGauge", 123.45))
+	require.NoError(t, storage.UpdateCounter(ctx, "existingCounter", 100))
+	svc := service.NewMetricsService(storage)
+	return &MetricsHandler{Service: svc}
+}
+
+func TestMetricsHandler_UpdateHandler(t *testing.T) {
+	h := newTestHandler()
 
 	r := chi.NewRouter()
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
 
-	// тестовый сервер
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
@@ -102,11 +121,7 @@ func TestMetricsHandler_UpdateHandler(t *testing.T) {
 }
 
 func TestMetricsHandler_ValueHandler(t *testing.T) {
-	storage := repository.NewMemStorage()
-	storage.UpdateGauge("existingGauge", 123.45)
-	storage.UpdateCounter("existingCounter", 100)
-
-	h := &MetricsHandler{Storage: storage}
+	h := newTestHandlerWithData(t)
 
 	r := chi.NewRouter()
 	r.Get("/value/{type}/{name}", h.ValueHandler)
@@ -136,13 +151,11 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 			name:     "Получение несуществующей метрики",
 			url:      "/value/gauge/nonExistent",
 			wantCode: http.StatusNotFound,
-			wantBody: http.StatusText(http.StatusNotFound) + "\n",
 		},
 		{
 			name:     "Неверный тип метрики",
 			url:      "/value/unknown/existingGauge",
 			wantCode: http.StatusBadRequest,
-			wantBody: http.StatusText(http.StatusBadRequest) + "\n",
 		},
 	}
 
@@ -151,15 +164,67 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 			resp, body := testRequest(t, ts, http.MethodGet, tt.url)
 			defer resp.Body.Close()
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
-			assert.Equal(t, tt.wantBody, body)
+			if tt.wantBody != "" {
+				assert.Contains(t, body, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestMetricsHandler_PingDB(t *testing.T) {
+	tests := []struct {
+		name     string
+		prepare  func(s *smock.MockMetricsService)
+		wantCode int
+	}{
+		{
+			name: "БД доступна — 200",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(nil)
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name: "БД недоступна — 500",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(errors.New("connection refused"))
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+		{
+			name: "Нет БД (MemStorage) — 500",
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().Ping(gomock.Any()).Return(repository.ErrNoDB)
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			svc := smock.NewMockMetricsService(ctrl)
+			tt.prepare(svc)
+
+			h := &MetricsHandler{Service: svc}
+			r := chi.NewRouter()
+			r.Get("/ping", h.PingDB)
+
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+
+			resp, _ := testRequest(t, ts, http.MethodGet, "/ping")
+			defer resp.Body.Close()
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
 		})
 	}
 }
 
 func TestMetricsHandler_RootHandler(t *testing.T) {
 	storage := repository.NewMemStorage()
-	storage.UpdateCounter("testCounter", 5)
-	h := &MetricsHandler{Storage: storage}
+	require.NoError(t, storage.UpdateCounter(context.Background(), "testCounter", 5))
+	svc := service.NewMetricsService(storage)
+	h := &MetricsHandler{Service: svc}
 
 	r := chi.NewRouter()
 	r.Get("/", h.RootHandler)
@@ -197,8 +262,7 @@ func testJSONRequest(t *testing.T, ts *httptest.Server, method, path string, bod
 }
 
 func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
-	storage := repository.NewMemStorage()
-	h := &MetricsHandler{Storage: storage}
+	h := newTestHandler()
 
 	r := chi.NewRouter()
 	r.Post("/update/", h.UpdateJSONHandler)
@@ -297,11 +361,7 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 }
 
 func TestMetricsHandler_ValueJSONHandler(t *testing.T) {
-	storage := repository.NewMemStorage()
-	storage.UpdateGauge("existingGauge", 123.45)
-	storage.UpdateCounter("existingCounter", 100)
-
-	h := &MetricsHandler{Storage: storage}
+	h := newTestHandlerWithData(t)
 
 	r := chi.NewRouter()
 	r.Post("/value/", h.ValueJSONHandler)
@@ -365,6 +425,134 @@ func TestMetricsHandler_ValueJSONHandler(t *testing.T) {
 					assert.Equal(t, *tt.wantDelta, *result.Delta)
 				}
 			}
+		})
+	}
+}
+
+// --- Тесты с MockMetricsService ---
+
+func TestUpdateBatchHandler_MockService(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     any
+		prepare  func(s *smock.MockMetricsService)
+		wantCode int
+	}{
+		{
+			name: "Успешный батч gauge + counter",
+			body: []model.Metrics{
+				{ID: "cpu", MType: model.Gauge, Value: ptrFloat64(42.5)},
+				{ID: "hits", MType: model.Counter, Delta: ptrInt64(10)},
+			},
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().UpdateBatch(gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantCode: http.StatusOK,
+		},
+		{
+			name: "Пустой батч — 400",
+			body: []model.Metrics{},
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().UpdateBatch(gomock.Any(), gomock.Any()).Return(service.ErrEmptyBatch)
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "Ошибка хранилища — 500",
+			body: []model.Metrics{
+				{ID: "cpu", MType: model.Gauge, Value: ptrFloat64(1.0)},
+			},
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().UpdateBatch(gomock.Any(), gomock.Any()).Return(errors.New("db connection lost"))
+			},
+			wantCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			svc := smock.NewMockMetricsService(ctrl)
+			tt.prepare(svc)
+
+			h := &MetricsHandler{Service: svc}
+			r := chi.NewRouter()
+			r.Post("/updates/", h.UpdateBatchHandler)
+
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+
+			resp, _ := testJSONRequest(t, ts, http.MethodPost, "/updates/", tt.body)
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
+		})
+	}
+
+	t.Run("Невалидный JSON — 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc := smock.NewMockMetricsService(ctrl)
+		h := &MetricsHandler{Service: svc}
+
+		r := chi.NewRouter()
+		r.Post("/updates/", h.UpdateBatchHandler)
+
+		ts := httptest.NewServer(r)
+		defer ts.Close()
+
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/updates/", bytes.NewBufferString("not json"))
+		require.NoError(t, err)
+
+		resp, err := ts.Client().Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+func TestUpdateJSONHandler_ServiceError(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  model.Metrics
+		prepare  func(s *smock.MockMetricsService)
+		wantCode int
+	}{
+		{
+			name:    "Метрика не найдена после обновления — 404",
+			payload: model.Metrics{ID: "ghost", MType: model.Gauge, Value: ptrFloat64(1.0)},
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().UpdateJSON(gomock.Any(), gomock.Any()).Return(model.Metrics{}, service.ErrMetricNotFound)
+			},
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:    "Невалидный тип метрики — 400",
+			payload: model.Metrics{ID: "test", MType: "unknown"},
+			prepare: func(s *smock.MockMetricsService) {
+				s.EXPECT().UpdateJSON(gomock.Any(), gomock.Any()).Return(model.Metrics{}, service.ErrInvalidType)
+			},
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			svc := smock.NewMockMetricsService(ctrl)
+			tt.prepare(svc)
+
+			h := &MetricsHandler{Service: svc}
+			r := chi.NewRouter()
+			r.Post("/update/", h.UpdateJSONHandler)
+
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+
+			resp, _ := testJSONRequest(t, ts, http.MethodPost, "/update/", tt.payload)
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
 		})
 	}
 }

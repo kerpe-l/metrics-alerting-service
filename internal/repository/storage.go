@@ -1,16 +1,25 @@
 package repository
 
 import (
+	"context"
+	"errors"
 	"maps"
 	"sync"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
+// ErrNoDB означает, что хранилище не поддерживает проверку соединения с БД.
+var ErrNoDB = errors.New("no database connection")
+
 type Storage interface {
-	UpdateGauge(name string, value float64)
-	UpdateCounter(name string, value int64)
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
-	GetAll() (map[string]float64, map[string]int64)
+	UpdateGauge(ctx context.Context, name string, value float64) error
+	UpdateCounter(ctx context.Context, name string, value int64) error
+	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
+	GetGauge(ctx context.Context, name string) (float64, bool)
+	GetCounter(ctx context.Context, name string) (int64, bool)
+	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
+	Ping(ctx context.Context) error
 }
 
 type MemStorage struct {
@@ -26,33 +35,58 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (ms *MemStorage) UpdateGauge(name string, value float64) {
-	ms.mu.Lock() // блокировка для записи
+func (ms *MemStorage) UpdateGauge(_ context.Context, name string, value float64) error {
+	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.gauges[name] = value
+	return nil
 }
 
-func (ms *MemStorage) UpdateCounter(name string, value int64) {
+func (ms *MemStorage) UpdateCounter(_ context.Context, name string, value int64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.counters[name] += value
+	return nil
 }
 
-func (ms *MemStorage) GetGauge(name string) (float64, bool) {
-	ms.mu.RLock() // блокировка для чтения
+func (ms *MemStorage) UpdateBatch(_ context.Context, metrics []model.Metrics) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case model.Gauge:
+			if m.Value != nil {
+				ms.gauges[m.ID] = *m.Value
+			}
+		case model.Counter:
+			if m.Delta != nil {
+				ms.counters[m.ID] += *m.Delta
+			}
+		}
+	}
+	return nil
+}
+
+func (ms *MemStorage) GetGauge(_ context.Context, name string) (float64, bool) {
+	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	v, ok := ms.gauges[name]
 	return v, ok
 }
 
-func (ms *MemStorage) GetCounter(name string) (int64, bool) {
+func (ms *MemStorage) GetCounter(_ context.Context, name string) (int64, bool) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	v, ok := ms.counters[name]
 	return v, ok
 }
 
-func (ms *MemStorage) GetAll() (map[string]float64, map[string]int64) {
+func (ms *MemStorage) Ping(_ context.Context) error {
+	return ErrNoDB
+}
+
+func (ms *MemStorage) GetAll(_ context.Context) (map[string]float64, map[string]int64) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
