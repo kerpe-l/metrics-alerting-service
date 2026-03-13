@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var Log *zap.Logger = zap.NewNop()
@@ -17,6 +18,8 @@ func Initialize(level string) error {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = lvl
+	cfg.EncoderConfig.TimeKey = "ts"
+	cfg.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 
 	zl, err := cfg.Build()
 	if err != nil {
