@@ -15,6 +15,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
+	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/file"
@@ -106,6 +107,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
 	r.Use(gzip.Middleware)
+	r.Use(hash.Middleware(cfg.Key))
 
 	r.Get("/", h.RootHandler)
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)

@@ -13,6 +13,7 @@ type ServerConfig struct {
 	FileStoragePath string
 	Restore         bool
 	DatabaseDSN     string
+	Key             string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
@@ -25,6 +26,7 @@ func NewServerConfig() *ServerConfig {
 	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database connection string")
+	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
 
 	flag.Parse()
 
@@ -46,6 +48,9 @@ func NewServerConfig() *ServerConfig {
 	}
 	if v := os.Getenv("DATABASE_DSN"); v != "" {
 		cfg.DatabaseDSN = v
+	}
+	if v := os.Getenv("KEY"); v != "" {
+		cfg.Key = v
 	}
 
 	return cfg

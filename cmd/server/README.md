@@ -22,6 +22,8 @@ go build -o server ./cmd/server
 | `-i` | `STORE_INTERVAL` | `300` | Интервал сохранения метрик на диск (сек). `0` — синхронная запись после каждого обновления |
 | `-f` | `FILE_STORAGE_PATH` | `/tmp/metrics-db.json` | Путь к файлу для хранения метрик |
 | `-r` | `RESTORE` | `true` | Загружать ранее сохранённые метрики при старте |
+| `-d` | `DATABASE_DSN` | `""` | Строка подключения к PostgreSQL |
+| `-k` | `KEY` | `""` | Ключ для подписи данных (HMAC-SHA256) |
 
 Если задана переменная окружения — используется она. Иначе — значение флага. Иначе — значение по умолчанию.
 
@@ -45,8 +47,24 @@ go build -o server ./cmd/server
 ./server -i 30 -f ./my-metrics.json -r false
 ```
 
+С PostgreSQL:
+
+```bash
+./server -d "postgres://user:pass@localhost:5432/metrics"
+```
+
 Через переменные окружения:
 
 ```bash
 STORE_INTERVAL=60 FILE_STORAGE_PATH=./data.json RESTORE=true ./server
 ```
+
+Запуск с подписью данных:
+
+```bash
+./server -k=mysecretkey
+```
+
+## Подпись данных (HMAC-SHA256)
+
+При указании ключа (`-k` или `KEY`) сервер проверяет HMAC-SHA256 подпись входящих запросов (заголовок `HashSHA256`) и подписывает тела ответов тем же заголовком. При несовпадении хеша запрос отклоняется с кодом `400 Bad Request`. Ключ должен совпадать с ключом агента.

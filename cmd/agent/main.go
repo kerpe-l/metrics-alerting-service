@@ -24,7 +24,7 @@ func main() {
 	serverAddr := fmt.Sprintf("http://%s", cfg.Address)
 
 	collector := agent.NewCollector()
-	sender := agent.NewSender(serverAddr)
+	sender := agent.NewSender(serverAddr, cfg.Key)
 
 	pollTicker := time.NewTicker(pollDuration)
 	reportTicker := time.NewTicker(reportDuration)

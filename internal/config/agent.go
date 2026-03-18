@@ -11,6 +11,7 @@ type AgentConfig struct {
 	Address        string
 	ReportInterval int
 	PollInterval   int
+	Key            string
 }
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
@@ -21,6 +22,7 @@ func NewAgentConfig() *AgentConfig {
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
+	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
 
 	flag.Parse()
 
@@ -36,6 +38,9 @@ func NewAgentConfig() *AgentConfig {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.PollInterval = n
 		}
+	}
+	if v := os.Getenv("KEY"); v != "" {
+		cfg.Key = v
 	}
 
 	return cfg

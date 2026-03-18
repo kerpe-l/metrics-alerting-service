@@ -110,7 +110,7 @@ func TestSender_Send(t *testing.T) {
 	c := NewCollector()
 	c.Collect()
 
-	s := NewSender(server.URL)
+	s := NewSender(server.URL, "")
 	s.Send(c.Metrics())
 
 	expectedCount := len(c.runtimeMetrics) + 2 // gauges + RandomValue + PollCount

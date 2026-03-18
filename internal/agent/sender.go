@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/retry"
@@ -33,11 +34,12 @@ func isRetriableHTTPError(err error) bool {
 // Sender отправляет метрики на сервер.
 type Sender struct {
 	serverAddr string
+	key        string
 }
 
 // NewSender создаёт новый отправитель метрик.
-func NewSender(serverAddr string) *Sender {
-	return &Sender{serverAddr: serverAddr}
+func NewSender(serverAddr, key string) *Sender {
+	return &Sender{serverAddr: serverAddr, key: key}
 }
 
 // Send отправляет слайс метрик батчем на /updates/.
@@ -76,6 +78,9 @@ func (s *Sender) Send(metrics []model.Metrics) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if s.key != "" {
+			req.Header.Set("HashSHA256", hash.Compute(data, s.key))
+		}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -86,6 +91,10 @@ func (s *Sender) Send(metrics []model.Metrics) {
 		if resp.StatusCode >= http.StatusInternalServerError {
 			body, _ := io.ReadAll(resp.Body)
 			return fmt.Errorf("%w: %d %s", errServerUnavailable, resp.StatusCode, bytes.TrimSpace(body))
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("request rejected: %d %s", resp.StatusCode, bytes.TrimSpace(body))
 		}
 		return nil
 	}, isRetriableHTTPError)
