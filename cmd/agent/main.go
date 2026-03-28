@@ -9,6 +9,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
+	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
 func main() {
@@ -26,27 +27,50 @@ func main() {
 	collector := agent.NewCollector()
 	sender := agent.NewSender(serverAddr, cfg.Key)
 
-	pollTicker := time.NewTicker(pollDuration)
-	reportTicker := time.NewTicker(reportDuration)
-
-	defer pollTicker.Stop()
-	defer reportTicker.Stop()
-
 	logger.Log.Info("agent started",
 		zap.Duration("poll", pollDuration),
 		zap.Duration("report", reportDuration),
 		zap.String("server", serverAddr),
+		zap.Int("rateLimit", cfg.RateLimit),
 	)
 
-	for {
-		select {
-		case <-pollTicker.C:
+	// Канал для передачи метрик воркерам.
+	jobs := make(chan []model.Metrics, cfg.RateLimit)
+
+	// Worker pool: ограничиваем количество одновременных исходящих запросов.
+	for i := 0; i < cfg.RateLimit; i++ {
+		go func() {
+			for metrics := range jobs {
+				sender.Send(metrics)
+			}
+		}()
+	}
+
+	// Горутина сбора runtime-метрик.
+	go func() {
+		pollTicker := time.NewTicker(pollDuration)
+		defer pollTicker.Stop()
+		for range pollTicker.C {
 			collector.Collect()
 			logger.Log.Info("Метрики собраны")
-
-		case <-reportTicker.C:
-			logger.Log.Info("Отправка метрик...")
-			sender.Send(collector.Metrics())
 		}
+	}()
+
+	// Горутина сбора дополнительных метрик (gopsutil).
+	go func() {
+		pollTicker := time.NewTicker(pollDuration)
+		defer pollTicker.Stop()
+		for range pollTicker.C {
+			collector.CollectExtra()
+			logger.Log.Info("Дополнительные метрики собраны")
+		}
+	}()
+
+	// Горутина отправки метрик.
+	reportTicker := time.NewTicker(reportDuration)
+	defer reportTicker.Stop()
+	for range reportTicker.C {
+		logger.Log.Info("Отправка метрик...")
+		jobs <- collector.Metrics()
 	}
 }

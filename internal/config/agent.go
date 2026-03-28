@@ -12,6 +12,7 @@ type AgentConfig struct {
 	ReportInterval int
 	PollInterval   int
 	Key            string
+	RateLimit      int
 }
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
@@ -23,6 +24,7 @@ func NewAgentConfig() *AgentConfig {
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
 	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	flag.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
 
 	flag.Parse()
 
@@ -41,6 +43,11 @@ func NewAgentConfig() *AgentConfig {
 	}
 	if v := os.Getenv("KEY"); v != "" {
 		cfg.Key = v
+	}
+	if v := os.Getenv("RATE_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.RateLimit = n
+		}
 	}
 
 	return cfg

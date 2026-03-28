@@ -50,7 +50,7 @@ func (s *Sender) Send(metrics []model.Metrics) {
 
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		logger.Log.Info("failed to marshal", zap.Error(err))
+		logger.Log.Error("failed to marshal", zap.Error(err))
 		return
 	}
 
@@ -58,11 +58,11 @@ func (s *Sender) Send(metrics []model.Metrics) {
 	var buf bytes.Buffer
 	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
 	if err != nil {
-		logger.Log.Info("failed to create gzip writer", zap.Error(err))
+		logger.Log.Error("failed to create gzip writer", zap.Error(err))
 		return
 	}
 	if _, err := gz.Write(data); err != nil {
-		logger.Log.Info("failed to write gzip data", zap.Error(err))
+		logger.Log.Error("failed to write gzip data", zap.Error(err))
 		return
 	}
 	gz.Close()
@@ -99,6 +99,6 @@ func (s *Sender) Send(metrics []model.Metrics) {
 		return nil
 	}, isRetriableHTTPError)
 	if err != nil {
-		logger.Log.Info("failed to send metrics", zap.Error(err))
+		logger.Log.Error("failed to send metrics", zap.Error(err))
 	}
 }

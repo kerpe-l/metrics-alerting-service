@@ -58,7 +58,7 @@ func main() {
 		// Восстанавливаем метрики из файла при старте, если задано
 		if cfg.Restore && cfg.FileStoragePath != "" {
 			if err := file.Load(context.Background(), cfg.FileStoragePath, storage); err != nil {
-				logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
+				logger.Log.Error("Не удалось загрузить метрики из файла: " + err.Error())
 			} else {
 				logger.Log.Info("Метрики загружены из файла " + cfg.FileStoragePath)
 			}
