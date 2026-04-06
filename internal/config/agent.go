@@ -51,6 +51,12 @@ func NewAgentConfig() (*AgentConfig, error) {
 		}
 	}
 
+	if cfg.PollInterval <= 0 {
+		return nil, errors.New("POLL_INTERVAL must be greater than 0")
+	}
+	if cfg.ReportInterval <= 0 {
+		return nil, errors.New("REPORT_INTERVAL must be greater than 0")
+	}
 	if cfg.RateLimit <= 0 {
 		return nil, errors.New("RATE_LIMIT must be greater than 0")
 	}
