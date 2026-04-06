@@ -30,26 +30,26 @@ func NewServerConfig() *ServerConfig {
 
 	flag.Parse()
 
-	if v := os.Getenv("ADDRESS"); v != "" {
+	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
 	}
-	if v := os.Getenv("STORE_INTERVAL"); v != "" {
+	if v, ok := os.LookupEnv("STORE_INTERVAL"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.StoreInterval = n
 		}
 	}
-	if v := os.Getenv("FILE_STORAGE_PATH"); v != "" {
+	if v, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		cfg.FileStoragePath = v
 	}
-	if v := os.Getenv("RESTORE"); v != "" {
+	if v, ok := os.LookupEnv("RESTORE"); ok {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.Restore = b
 		}
 	}
-	if v := os.Getenv("DATABASE_DSN"); v != "" {
+	if v, ok := os.LookupEnv("DATABASE_DSN"); ok {
 		cfg.DatabaseDSN = v
 	}
-	if v := os.Getenv("KEY"); v != "" {
+	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
 	}
 

@@ -28,23 +28,23 @@ func NewAgentConfig() *AgentConfig {
 
 	flag.Parse()
 
-	if v := os.Getenv("ADDRESS"); v != "" {
+	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
 	}
-	if v := os.Getenv("REPORT_INTERVAL"); v != "" {
+	if v, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.ReportInterval = n
 		}
 	}
-	if v := os.Getenv("POLL_INTERVAL"); v != "" {
+	if v, ok := os.LookupEnv("POLL_INTERVAL"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.PollInterval = n
 		}
 	}
-	if v := os.Getenv("KEY"); v != "" {
+	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
 	}
-	if v := os.Getenv("RATE_LIMIT"); v != "" {
+	if v, ok := os.LookupEnv("RATE_LIMIT"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.RateLimit = n
 		}
