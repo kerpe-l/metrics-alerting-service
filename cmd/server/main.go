@@ -15,6 +15,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
+	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/file"
@@ -57,7 +58,7 @@ func main() {
 		// Восстанавливаем метрики из файла при старте, если задано
 		if cfg.Restore && cfg.FileStoragePath != "" {
 			if err := file.Load(context.Background(), cfg.FileStoragePath, storage); err != nil {
-				logger.Log.Info("Не удалось загрузить метрики из файла: " + err.Error())
+				logger.Log.Error("Не удалось загрузить метрики из файла: " + err.Error())
 			} else {
 				logger.Log.Info("Метрики загружены из файла " + cfg.FileStoragePath)
 			}
@@ -106,6 +107,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
 	r.Use(gzip.Middleware)
+	r.Use(hash.Middleware(cfg.Key))
 
 	r.Get("/", h.RootHandler)
 	r.Post("/update/{type}/{name}/{value}", h.UpdateHandler)
@@ -115,7 +117,14 @@ func main() {
 	r.Post("/updates/", h.UpdateBatchHandler)
 	r.Get("/ping", h.PingDB)
 
-	srv := &http.Server{Addr: cfg.Address, Handler: r}
+	srv := &http.Server{
+		Addr:              cfg.Address,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
 
 	// Запускаем сервер в горутине
 	go func() {

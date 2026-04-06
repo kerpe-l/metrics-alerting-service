@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"strconv"
@@ -11,32 +12,54 @@ type AgentConfig struct {
 	Address        string
 	ReportInterval int
 	PollInterval   int
+	Key            string
+	RateLimit      int
 }
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
 // Приоритет: env > flag > default.
-func NewAgentConfig() *AgentConfig {
+func NewAgentConfig() (*AgentConfig, error) {
 	cfg := &AgentConfig{}
 
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
+	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	flag.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
 
 	flag.Parse()
 
-	if v := os.Getenv("ADDRESS"); v != "" {
+	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
 	}
-	if v := os.Getenv("REPORT_INTERVAL"); v != "" {
+	if v, ok := os.LookupEnv("REPORT_INTERVAL"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.ReportInterval = n
 		}
 	}
-	if v := os.Getenv("POLL_INTERVAL"); v != "" {
+	if v, ok := os.LookupEnv("POLL_INTERVAL"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.PollInterval = n
 		}
 	}
+	if v, ok := os.LookupEnv("KEY"); ok {
+		cfg.Key = v
+	}
+	if v, ok := os.LookupEnv("RATE_LIMIT"); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.RateLimit = n
+		}
+	}
 
-	return cfg
+	if cfg.PollInterval <= 0 {
+		return nil, errors.New("POLL_INTERVAL must be greater than 0")
+	}
+	if cfg.ReportInterval <= 0 {
+		return nil, errors.New("REPORT_INTERVAL must be greater than 0")
+	}
+	if cfg.RateLimit <= 0 {
+		return nil, errors.New("RATE_LIMIT must be greater than 0")
+	}
+
+	return cfg, nil
 }

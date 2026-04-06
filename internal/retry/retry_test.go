@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func TestDo(t *testing.T) {
 				return tt.fn()
 			}
 
-			err := Do(wrappedFn, tt.isRetriable)
+			err := Do(context.Background(), wrappedFn, tt.isRetriable)
 
 			assert.Equal(t, tt.wantCalls, calls)
 			assert.Equal(t, tt.wantErr, err)

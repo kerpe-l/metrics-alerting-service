@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -11,7 +12,8 @@ import (
 var delays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
 // Do выполняет fn и при retriable-ошибке повторяет до 3 раз с нарастающей задержкой.
-func Do(fn func() error, isRetriable func(error) bool) error {
+// Если контекст отменён, возвращает последнюю ошибку без ожидания.
+func Do(ctx context.Context, fn func() error, isRetriable func(error) bool) error {
 	err := fn()
 	if err == nil {
 		return nil
@@ -22,7 +24,13 @@ func Do(fn func() error, isRetriable func(error) bool) error {
 			return err
 		}
 		logger.Log.Warn(fmt.Sprintf("retry: attempt %d/%d failed: %v, retrying in %v", i+1, len(delays), err, delay))
-		time.Sleep(delay)
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+
 		err = fn()
 		if err == nil {
 			return nil

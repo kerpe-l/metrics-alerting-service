@@ -3,15 +3,18 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/retry"
@@ -33,22 +36,30 @@ func isRetriableHTTPError(err error) bool {
 // Sender отправляет метрики на сервер.
 type Sender struct {
 	serverAddr string
+	key        string
+	client     *http.Client
 }
 
 // NewSender создаёт новый отправитель метрик.
-func NewSender(serverAddr string) *Sender {
-	return &Sender{serverAddr: serverAddr}
+func NewSender(serverAddr, key string) *Sender {
+	return &Sender{
+		serverAddr: serverAddr,
+		key:        key,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
 }
 
 // Send отправляет слайс метрик батчем на /updates/.
-func (s *Sender) Send(metrics []model.Metrics) {
+func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 	if len(metrics) == 0 {
 		return
 	}
 
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		logger.Log.Info("failed to marshal", zap.Error(err))
+		logger.Log.Error("failed to marshal", zap.Error(err))
 		return
 	}
 
@@ -56,40 +67,56 @@ func (s *Sender) Send(metrics []model.Metrics) {
 	var buf bytes.Buffer
 	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
 	if err != nil {
-		logger.Log.Info("failed to create gzip writer", zap.Error(err))
+		logger.Log.Error("failed to create gzip writer", zap.Error(err))
 		return
 	}
 	if _, err := gz.Write(data); err != nil {
-		logger.Log.Info("failed to write gzip data", zap.Error(err))
+		logger.Log.Error("failed to write gzip data", zap.Error(err))
 		return
 	}
-	gz.Close()
+	if err := gz.Close(); err != nil {
+		logger.Log.Error("failed to close gzip writer", zap.Error(err))
+		return
+	}
 
 	compressed := buf.Bytes()
 	endpoint := s.serverAddr + "/updates/"
 
-	err = retry.Do(func() error {
-		req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(compressed))
+	err = retry.Do(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(compressed))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if s.key != "" {
+			req.Header.Set("HashSHA256", hash.Compute(data, s.key))
+		}
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := s.client.Do(req)
 		if err != nil {
 			return err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusInternalServerError {
-			body, _ := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("%w: %d (failed to read body: %v)", errServerUnavailable, resp.StatusCode, err)
+			}
 			return fmt.Errorf("%w: %d %s", errServerUnavailable, resp.StatusCode, bytes.TrimSpace(body))
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("request rejected: %d (failed to read body: %v)", resp.StatusCode, err)
+			}
+			return fmt.Errorf("request rejected: %d %s", resp.StatusCode, bytes.TrimSpace(body))
 		}
 		return nil
 	}, isRetriableHTTPError)
 	if err != nil {
-		logger.Log.Info("failed to send metrics", zap.Error(err))
+		logger.Log.Error("failed to send metrics", zap.Error(err))
 	}
 }
