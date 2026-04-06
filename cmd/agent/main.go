@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -21,6 +24,9 @@ func main() {
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	reportDuration := time.Duration(cfg.ReportInterval) * time.Second
 	pollDuration := time.Duration(cfg.PollInterval) * time.Second
@@ -44,7 +50,7 @@ func main() {
 	for i := 0; i < cfg.RateLimit; i++ {
 		go func() {
 			for metrics := range jobs {
-				sender.Send(metrics)
+				sender.Send(ctx, metrics)
 			}
 		}()
 	}
@@ -53,9 +59,14 @@ func main() {
 	go func() {
 		pollTicker := time.NewTicker(pollDuration)
 		defer pollTicker.Stop()
-		for range pollTicker.C {
-			collector.Collect()
-			logger.Log.Info("Метрики собраны")
+		for {
+			select {
+			case <-pollTicker.C:
+				collector.Collect()
+				logger.Log.Info("Метрики собраны")
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -63,17 +74,28 @@ func main() {
 	go func() {
 		pollTicker := time.NewTicker(pollDuration)
 		defer pollTicker.Stop()
-		for range pollTicker.C {
-			collector.CollectExtra()
-			logger.Log.Info("Дополнительные метрики собраны")
+		for {
+			select {
+			case <-pollTicker.C:
+				collector.CollectExtra()
+				logger.Log.Info("Дополнительные метрики собраны")
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	// Горутина отправки метрик.
 	reportTicker := time.NewTicker(reportDuration)
 	defer reportTicker.Stop()
-	for range reportTicker.C {
-		logger.Log.Info("Отправка метрик...")
-		jobs <- collector.Metrics()
+	for {
+		select {
+		case <-reportTicker.C:
+			logger.Log.Info("Отправка метрик...")
+			jobs <- collector.Metrics()
+		case <-ctx.Done():
+			logger.Log.Info("Агент остановлен")
+			return
+		}
 	}
 }

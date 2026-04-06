@@ -2,6 +2,7 @@ package agent
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -201,7 +202,7 @@ func TestSender_Send(t *testing.T) {
 	c.Collect()
 
 	s := NewSender(server.URL, "")
-	s.Send(c.Metrics())
+	s.Send(context.Background(), c.Metrics())
 
 	expectedCount := len(c.runtimeMetrics) + len(c.extraMetrics) + 2 // gauges + extra + RandomValue + PollCount
 	assert.Equal(t, expectedCount, len(received))

@@ -38,7 +38,7 @@ func (d *Storage) Ping(ctx context.Context) error {
 }
 
 func (d *Storage) UpdateGauge(ctx context.Context, name string, value float64) error {
-	return retry.Do(func() error {
+	return retry.Do(ctx, func() error {
 		_, err := d.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, value, updated_at)
 			 VALUES ($1, 'gauge', $2, NOW())
@@ -50,7 +50,7 @@ func (d *Storage) UpdateGauge(ctx context.Context, name string, value float64) e
 }
 
 func (d *Storage) UpdateCounter(ctx context.Context, name string, value int64) error {
-	return retry.Do(func() error {
+	return retry.Do(ctx, func() error {
 		_, err := d.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, delta, updated_at)
 			 VALUES ($1, 'counter', $2, NOW())
@@ -62,7 +62,7 @@ func (d *Storage) UpdateCounter(ctx context.Context, name string, value int64) e
 }
 
 func (d *Storage) UpdateBatch(ctx context.Context, metrics []model.Metrics) error {
-	return retry.Do(func() error {
+	return retry.Do(ctx, func() error {
 		tx, err := d.pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
@@ -101,7 +101,7 @@ func (d *Storage) UpdateBatch(ctx context.Context, metrics []model.Metrics) erro
 
 func (d *Storage) GetGauge(ctx context.Context, name string) (float64, bool) {
 	var val float64
-	err := retry.Do(func() error {
+	err := retry.Do(ctx, func() error {
 		return d.pool.QueryRow(ctx,
 			`SELECT value FROM metrics WHERE id = $1 AND type = 'gauge'`,
 			name,
@@ -115,7 +115,7 @@ func (d *Storage) GetGauge(ctx context.Context, name string) (float64, bool) {
 
 func (d *Storage) GetCounter(ctx context.Context, name string) (int64, bool) {
 	var val int64
-	err := retry.Do(func() error {
+	err := retry.Do(ctx, func() error {
 		return d.pool.QueryRow(ctx,
 			`SELECT delta FROM metrics WHERE id = $1 AND type = 'counter'`,
 			name,
@@ -131,7 +131,7 @@ func (d *Storage) GetAll(ctx context.Context) (map[string]float64, map[string]in
 	gauges := make(map[string]float64)
 	counters := make(map[string]int64)
 
-	err := retry.Do(func() error {
+	err := retry.Do(ctx, func() error {
 		rows, err := d.pool.Query(ctx,
 			`SELECT id, type, delta, value FROM metrics`,
 		)

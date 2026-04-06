@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,7 +52,7 @@ func NewSender(serverAddr, key string) *Sender {
 }
 
 // Send отправляет слайс метрик батчем на /updates/.
-func (s *Sender) Send(metrics []model.Metrics) {
+func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 	if len(metrics) == 0 {
 		return
 	}
@@ -81,8 +82,8 @@ func (s *Sender) Send(metrics []model.Metrics) {
 	compressed := buf.Bytes()
 	endpoint := s.serverAddr + "/updates/"
 
-	err = retry.Do(func() error {
-		req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(compressed))
+	err = retry.Do(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(compressed))
 		if err != nil {
 			return err
 		}
