@@ -73,7 +73,10 @@ func (s *Sender) Send(metrics []model.Metrics) {
 		logger.Log.Error("failed to write gzip data", zap.Error(err))
 		return
 	}
-	gz.Close()
+	if err := gz.Close(); err != nil {
+		logger.Log.Error("failed to close gzip writer", zap.Error(err))
+		return
+	}
 
 	compressed := buf.Bytes()
 	endpoint := s.serverAddr + "/updates/"
@@ -97,11 +100,17 @@ func (s *Sender) Send(metrics []model.Metrics) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusInternalServerError {
-			body, _ := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("%w: %d (failed to read body: %v)", errServerUnavailable, resp.StatusCode, err)
+			}
 			return fmt.Errorf("%w: %d %s", errServerUnavailable, resp.StatusCode, bytes.TrimSpace(body))
 		}
 		if resp.StatusCode >= http.StatusBadRequest {
-			body, _ := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("request rejected: %d (failed to read body: %v)", resp.StatusCode, err)
+			}
 			return fmt.Errorf("request rejected: %d %s", resp.StatusCode, bytes.TrimSpace(body))
 		}
 		return nil

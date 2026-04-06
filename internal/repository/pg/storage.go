@@ -148,7 +148,7 @@ func (d *Storage) GetAll(ctx context.Context) (map[string]float64, map[string]in
 				value *float64
 			)
 			if err := rows.Scan(&id, &mType, &delta, &value); err != nil {
-				continue
+				return fmt.Errorf("scan row: %w", err)
 			}
 			switch mType {
 			case "gauge":
