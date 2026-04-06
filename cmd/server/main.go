@@ -117,7 +117,14 @@ func main() {
 	r.Post("/updates/", h.UpdateBatchHandler)
 	r.Get("/ping", h.PingDB)
 
-	srv := &http.Server{Addr: cfg.Address, Handler: r}
+	srv := &http.Server{
+		Addr:              cfg.Address,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
 
 	// Запускаем сервер в горутине
 	go func() {
