@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -35,11 +36,18 @@ func isRetriableHTTPError(err error) bool {
 type Sender struct {
 	serverAddr string
 	key        string
+	client     *http.Client
 }
 
 // NewSender создаёт новый отправитель метрик.
 func NewSender(serverAddr, key string) *Sender {
-	return &Sender{serverAddr: serverAddr, key: key}
+	return &Sender{
+		serverAddr: serverAddr,
+		key:        key,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
 }
 
 // Send отправляет слайс метрик батчем на /updates/.
@@ -82,7 +90,7 @@ func (s *Sender) Send(metrics []model.Metrics) {
 			req.Header.Set("HashSHA256", hash.Compute(data, s.key))
 		}
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := s.client.Do(req)
 		if err != nil {
 			return err
 		}
