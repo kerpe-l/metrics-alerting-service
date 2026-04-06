@@ -13,7 +13,10 @@ import (
 )
 
 func main() {
-	cfg := config.NewAgentConfig()
+	cfg, err := config.NewAgentConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"strconv"
@@ -17,7 +18,7 @@ type AgentConfig struct {
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
 // Приоритет: env > flag > default.
-func NewAgentConfig() *AgentConfig {
+func NewAgentConfig() (*AgentConfig, error) {
 	cfg := &AgentConfig{}
 
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
@@ -50,5 +51,9 @@ func NewAgentConfig() *AgentConfig {
 		}
 	}
 
-	return cfg
+	if cfg.RateLimit <= 0 {
+		return nil, errors.New("RATE_LIMIT must be greater than 0")
+	}
+
+	return cfg, nil
 }
