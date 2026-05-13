@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 )
 
 const headerName = "HashSHA256"
@@ -42,7 +44,7 @@ func Middleware(key string) func(http.Handler) http.Handler {
 					http.Error(w, "failed to read body", http.StatusInternalServerError)
 					return
 				}
-				r.Body.Close()
+				_ = r.Body.Close()
 
 				if !Verify(body, key, receivedHash) {
 					http.Error(w, "hash mismatch", http.StatusBadRequest)
@@ -70,7 +72,9 @@ func Middleware(key string) func(http.Handler) http.Handler {
 				w.WriteHeader(hw.statusCode)
 			}
 			if len(respBody) > 0 {
-				w.Write(respBody)
+				if _, err := w.Write(respBody); err != nil {
+					logger.Log.Error("ошибка записи ответа: " + err.Error())
+				}
 			}
 		})
 	}

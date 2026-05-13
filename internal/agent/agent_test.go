@@ -189,7 +189,7 @@ func TestSender_Send(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create gzip reader: %v", err)
 		}
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 
 		if err := json.NewDecoder(gz).Decode(&received); err != nil {
 			t.Fatalf("failed to decode batch: %v", err)

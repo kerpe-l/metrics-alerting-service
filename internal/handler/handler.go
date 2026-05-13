@@ -64,7 +64,9 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(result))
+	if _, err := w.Write([]byte(result)); err != nil {
+		logger.Log.Error("ошибка записи ответа: " + err.Error())
+	}
 }
 
 func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +152,9 @@ func (h *MetricsHandler) RootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	html += "</ul></body></html>"
-	w.Write([]byte(html))
+	if _, err := w.Write([]byte(html)); err != nil {
+		logger.Log.Error("ошибка записи ответа: " + err.Error())
+	}
 }
 
 // writeServiceError маппит ошибки сервиса на HTTP статус-коды.

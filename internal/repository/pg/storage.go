@@ -67,7 +67,7 @@ func (d *Storage) UpdateBatch(ctx context.Context, metrics []model.Metrics) erro
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
 		}
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		for _, m := range metrics {
 			switch m.MType {

@@ -122,7 +122,7 @@ func TestMiddleware(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(respBody))
+		_, _ = w.Write([]byte(respBody))
 	})
 
 	tests := []struct {

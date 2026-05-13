@@ -56,7 +56,7 @@ func Middleware(next http.Handler) http.Handler {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			defer gz.Close()
+			defer func() { _ = gz.Close() }()
 			r.Body = struct {
 				io.Reader
 				io.Closer
@@ -70,7 +70,7 @@ func Middleware(next http.Handler) http.Handler {
 		}
 
 		gw := &gzipWriter{ResponseWriter: w}
-		defer gw.Close()
+		defer func() { _ = gw.Close() }()
 		next.ServeHTTP(gw, r)
 	})
 }
