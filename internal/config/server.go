@@ -14,6 +14,8 @@ type ServerConfig struct {
 	Restore         bool
 	DatabaseDSN     string
 	Key             string
+	AuditFile       string
+	AuditURL        string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
@@ -27,6 +29,8 @@ func NewServerConfig() *ServerConfig {
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database connection string")
 	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
 
 	flag.Parse()
 
@@ -51,6 +55,12 @@ func NewServerConfig() *ServerConfig {
 	}
 	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		cfg.AuditFile = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
+		cfg.AuditURL = v
 	}
 
 	return cfg
