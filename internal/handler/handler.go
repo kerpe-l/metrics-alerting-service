@@ -4,18 +4,44 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/service"
 )
 
+// MetricsHandler — HTTP-обработчики работы с метриками.
 type MetricsHandler struct {
 	Service service.MetricsService
+	Audit   *audit.Publisher
+}
+
+// publishAudit формирует и публикует событие аудита для запроса.
+func (h *MetricsHandler) publishAudit(r *http.Request, names []string) {
+	if h.Audit == nil || len(names) == 0 {
+		return
+	}
+	h.Audit.Publish(audit.Event{
+		Timestamp: time.Now().Unix(),
+		Metrics:   names,
+		IPAddress: clientIP(r),
+	})
+}
+
+// clientIP возвращает IP-адрес клиента, отбрасывая порт у r.RemoteAddr.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +77,7 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.publishAudit(r, []string{mName})
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -83,6 +110,7 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	h.publishAudit(r, []string{updated.ID})
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(updated); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -125,6 +153,11 @@ func (h *MetricsHandler) UpdateBatchHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	names := make([]string, 0, len(metrics))
+	for _, m := range metrics {
+		names = append(names, m.ID)
+	}
+	h.publishAudit(r, names)
 	w.WriteHeader(http.StatusOK)
 }
 
