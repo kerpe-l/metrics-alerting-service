@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
@@ -102,7 +103,14 @@ func main() {
 	}
 
 	svc := service.NewMetricsService(st)
-	h := &handler.MetricsHandler{Service: svc}
+
+	// Аудит: создаём Publisher, если задан хотя бы один приёмник.
+	auditPub, auditFileSink, err := setupAudit(cfg)
+	if err != nil {
+		logger.Log.Fatal("Не удалось настроить аудит: " + err.Error())
+	}
+
+	h := &handler.MetricsHandler{Service: svc, Audit: auditPub}
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
@@ -151,5 +159,45 @@ func main() {
 		onShutdown()
 	}
 
+	// Дожидаемся доставки событий аудита и закрываем файл-приёмник.
+	if auditPub != nil {
+		if err := auditPub.Close(shutdownCtx); err != nil {
+			logger.Log.Error("Ошибка ожидания аудита: " + err.Error())
+		}
+	}
+	if auditFileSink != nil {
+		if err := auditFileSink.Close(); err != nil {
+			logger.Log.Error("Ошибка закрытия файла аудита: " + err.Error())
+		}
+	}
+
 	logger.Log.Info("Сервер остановлен")
+}
+
+// setupAudit создаёт Publisher и регистрирует приёмники по конфигурации.
+// Возвращает (nil, nil, nil), если ни один приёмник не задан.
+// Файловый приёмник возвращается отдельно, чтобы закрыть его после Publisher.Close.
+func setupAudit(cfg *config.ServerConfig) (*audit.Publisher, *audit.FileSink, error) {
+	if cfg.AuditFile == "" && cfg.AuditURL == "" {
+		return nil, nil, nil
+	}
+
+	pub := audit.NewPublisher()
+
+	var fileSink *audit.FileSink
+	if cfg.AuditFile != "" {
+		fs, err := audit.NewFileSink(cfg.AuditFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		fileSink = fs
+		pub.Register(fs)
+		logger.Log.Info("Аудит: файл " + cfg.AuditFile)
+	}
+	if cfg.AuditURL != "" {
+		pub.Register(audit.NewHTTPSink(cfg.AuditURL))
+		logger.Log.Info("Аудит: URL " + cfg.AuditURL)
+	}
+
+	return pub, fileSink, nil
 }
