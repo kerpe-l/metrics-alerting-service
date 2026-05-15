@@ -88,10 +88,10 @@ func TestCollector_Metrics(t *testing.T) {
 
 func TestCollector_CollectExtra(t *testing.T) {
 	tests := []struct {
-		name           string
-		wantTotalMem   bool
-		wantFreeMem    bool
-		wantCPU        bool
+		name         string
+		wantTotalMem bool
+		wantFreeMem  bool
+		wantCPU      bool
 	}{
 		{
 			name:         "Сбор дополнительных метрик (gopsutil)",

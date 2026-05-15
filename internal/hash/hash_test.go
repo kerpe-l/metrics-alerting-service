@@ -59,11 +59,11 @@ func TestVerify(t *testing.T) {
 	validHash := Compute(data, key)
 
 	tests := []struct {
-		name     string
-		data     []byte
-		key      string
-		hash     string
-		wantOK   bool
+		name   string
+		data   []byte
+		key    string
+		hash   string
+		wantOK bool
 	}{
 		{
 			name:   "valid hash",
