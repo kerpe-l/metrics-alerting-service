@@ -3,10 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -170,22 +170,40 @@ func (h *MetricsHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// RootHandler отдает HTML со списком всех метрик
+// RootHandler отдает HTML со списком всех метрик.
+// Использует strings.Builder с предварительной оценкой ёмкости, чтобы избежать
+// квадратичных аллокаций при конкатенации.
 func (h *MetricsHandler) RootHandler(w http.ResponseWriter, r *http.Request) {
 	gauges, counters := h.Service.GetAll(r.Context())
 
 	w.Header().Set("Content-Type", "text/html")
-	html := "<html><body><h1>Metrics</h1><ul>"
+
+	const header = "<html><body><h1>Metrics</h1><ul>"
+	const footer = "</ul></body></html>"
+
+	var sb strings.Builder
+	// 64 байта на строку — грубая верхняя оценка.
+	sb.Grow(len(header) + len(footer) + (len(gauges)+len(counters))*64)
+	sb.WriteString(header)
 
 	for name, val := range gauges {
-		html += fmt.Sprintf("<li>[Gauge] %s: %v</li>", name, val)
+		sb.WriteString(`<li>[Gauge] `)
+		sb.WriteString(name)
+		sb.WriteString(`: `)
+		sb.WriteString(strconv.FormatFloat(val, 'f', -1, 64))
+		sb.WriteString(`</li>`)
 	}
 	for name, val := range counters {
-		html += fmt.Sprintf("<li>[Counter] %s: %v</li>", name, val)
+		sb.WriteString(`<li>[Counter] `)
+		sb.WriteString(name)
+		sb.WriteString(`: `)
+		sb.WriteString(strconv.FormatInt(val, 10))
+		sb.WriteString(`</li>`)
 	}
 
-	html += "</ul></body></html>"
-	if _, err := w.Write([]byte(html)); err != nil {
+	sb.WriteString(footer)
+
+	if _, err := w.Write([]byte(sb.String())); err != nil {
 		logger.Log.Error("ошибка записи ответа: " + err.Error())
 	}
 }

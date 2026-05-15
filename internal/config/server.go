@@ -16,6 +16,7 @@ type ServerConfig struct {
 	Key             string
 	AuditFile       string
 	AuditURL        string
+	PprofAddr       string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
@@ -31,6 +32,7 @@ func NewServerConfig() *ServerConfig {
 	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
+	flag.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
 
 	flag.Parse()
 
@@ -61,6 +63,9 @@ func NewServerConfig() *ServerConfig {
 	}
 	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
 		cfg.AuditURL = v
+	}
+	if v, ok := os.LookupEnv("PPROF_ADDR"); ok {
+		cfg.PprofAddr = v
 	}
 
 	return cfg

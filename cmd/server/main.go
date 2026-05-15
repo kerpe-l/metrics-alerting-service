@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	_ "net/http/pprof"
 	"os/signal"
 	"syscall"
 	"time"
@@ -143,6 +144,23 @@ func main() {
 
 	logger.Log.Info("Сервер запущен на " + cfg.Address)
 
+	// Опциональный pprof debug-сервер на отдельном порту.
+	// Использует DefaultServeMux, в который регистрируются хендлеры из net/http/pprof.
+	var pprofSrv *http.Server
+	if cfg.PprofAddr != "" {
+		pprofSrv = &http.Server{
+			Addr:              cfg.PprofAddr,
+			Handler:           http.DefaultServeMux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			if err := pprofSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Log.Error("pprof server: " + err.Error())
+			}
+		}()
+		logger.Log.Info("pprof доступен на " + cfg.PprofAddr + "/debug/pprof/")
+	}
+
 	// Ждём сигнал завершения
 	<-ctx.Done()
 	logger.Log.Info("Получен сигнал завершения, останавливаем сервер...")
@@ -153,6 +171,11 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Log.Error("Ошибка при остановке сервера: " + err.Error())
+	}
+	if pprofSrv != nil {
+		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Log.Error("Ошибка при остановке pprof: " + err.Error())
+		}
 	}
 
 	if onShutdown != nil {

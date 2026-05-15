@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,6 +20,14 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 	"github.com/kerpe-l/metrics-alerting-service/internal/retry"
 )
+
+// gzipWriterPool переиспользует gzip.Writer между вызовами Send.
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		gz, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+		return gz
+	},
+}
 
 // errServerUnavailable — ошибка для 5xx ответов сервера.
 var errServerUnavailable = errors.New("server unavailable")
@@ -63,21 +72,22 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 		return
 	}
 
-	// Сжимаем запрос через gzip
+	// Сжимаем запрос через gzip, переиспользуя writer из пула.
 	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-	if err != nil {
-		logger.Log.Error("failed to create gzip writer", zap.Error(err))
-		return
-	}
+	buf.Grow(len(data) / 2)
+	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz.Reset(&buf)
 	if _, err := gz.Write(data); err != nil {
+		gzipWriterPool.Put(gz)
 		logger.Log.Error("failed to write gzip data", zap.Error(err))
 		return
 	}
 	if err := gz.Close(); err != nil {
+		gzipWriterPool.Put(gz)
 		logger.Log.Error("failed to close gzip writer", zap.Error(err))
 		return
 	}
+	gzipWriterPool.Put(gz)
 
 	compressed := buf.Bytes()
 	endpoint := s.serverAddr + "/updates/"
