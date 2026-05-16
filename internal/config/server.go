@@ -10,15 +10,24 @@ import (
 
 // ServerConfig содержит конфигурацию сервера метрик.
 type ServerConfig struct {
-	Address         string
-	StoreInterval   int
+	// Address — адрес и порт HTTP-сервера.
+	Address string
+	// StoreInterval — интервал сохранения метрик в файл, сек (0 = синхронно).
+	StoreInterval int
+	// FileStoragePath — путь к файлу персистентности метрик.
 	FileStoragePath string
-	Restore         bool
-	DatabaseDSN     string
-	Key             string
-	AuditFile       string
-	AuditURL        string
-	PprofAddr       string
+	// Restore — восстанавливать метрики из файла при старте.
+	Restore bool
+	// DatabaseDSN — строка подключения к PostgreSQL (пусто = режим память/файл).
+	DatabaseDSN string
+	// Key — ключ для подписи HMAC-SHA256 (пусто = подпись отключена).
+	Key string
+	// AuditFile — путь к файлу аудита (пусто = файловый аудит отключён).
+	AuditFile string
+	// AuditURL — URL для POST событий аудита (пусто = remote-аудит отключён).
+	AuditURL string
+	// PprofAddr — адрес pprof debug-эндпоинта (пусто = отключён).
+	PprofAddr string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
