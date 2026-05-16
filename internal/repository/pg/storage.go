@@ -1,3 +1,5 @@
+// Package pg реализует интерфейс repository.Storage поверх PostgreSQL
+// с использованием пула соединений pgx и повтором retriable-ошибок.
 package pg
 
 import (

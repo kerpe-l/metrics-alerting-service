@@ -1,3 +1,5 @@
+// Package repository определяет интерфейс хранилища метрик Storage и его
+// in-memory реализацию MemStorage.
 package repository
 
 import (

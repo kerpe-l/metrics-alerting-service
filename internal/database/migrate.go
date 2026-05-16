@@ -1,3 +1,5 @@
+// Package database применяет SQL-миграции к PostgreSQL через golang-migrate
+// с драйвером pgx/v5.
 package database
 
 import (

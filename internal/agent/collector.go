@@ -1,3 +1,5 @@
+// Package agent реализует агент сбора метрик: периодический опрос
+// runtime- и системных метрик (Collector) и их батч-отправку на сервер (Sender).
 package agent
 
 import (

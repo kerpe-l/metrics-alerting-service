@@ -1,3 +1,5 @@
+// Package logger предоставляет глобальный zap-логгер и middleware
+// логирования HTTP-запросов и ответов.
 package logger
 
 import (
