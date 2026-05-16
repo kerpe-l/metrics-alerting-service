@@ -22,8 +22,10 @@ import (
 
 // MetricsHandler — HTTP-обработчики работы с метриками.
 type MetricsHandler struct {
+	// Service — бизнес-логика работы с метриками.
 	Service service.MetricsService
-	Audit   *audit.Publisher
+	// Audit — публикатор событий аудита. Если nil, аудит отключён.
+	Audit *audit.Publisher
 }
 
 // publishAudit формирует и публикует событие аудита для запроса.
@@ -47,6 +49,8 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// UpdateHandler обрабатывает POST /update/{type}/{name}/{value}: обновляет метрику
+// по значению из URL. Возвращает 400, если тип неизвестен или значение не парсится.
 func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
 	mName := chi.URLParam(r, "name")
@@ -84,6 +88,8 @@ func (h *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// ValueHandler обрабатывает GET /value/{type}/{name}: возвращает текущее
+// значение метрики текстом. Возвращает 404, если метрика не найдена.
 func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	mType := chi.URLParam(r, "type")
 	mName := chi.URLParam(r, "name")
@@ -99,6 +105,8 @@ func (h *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateJSONHandler обрабатывает POST /update/ с телом model.Metrics в JSON:
+// обновляет метрику и возвращает её актуальное состояние в JSON.
 func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Request) {
 	var metric model.Metrics
 
@@ -121,6 +129,8 @@ func (h *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ValueJSONHandler обрабатывает POST /value/ с телом model.Metrics в JSON
+// (заполнены ID и MType): возвращает метрику с актуальным значением в JSON.
 func (h *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request) {
 	var metric model.Metrics
 
