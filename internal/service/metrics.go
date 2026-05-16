@@ -11,23 +11,40 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 )
 
+// Sentinel-ошибки сервиса. Хендлеры сравнивают их через errors.Is и маппят
+// в HTTP-статусы в одном месте (writeServiceError).
 var (
+	// ErrMetricNotFound — запрошенная метрика отсутствует в хранилище.
 	ErrMetricNotFound = errors.New("metric not found")
-	ErrInvalidType    = errors.New("unknown metric type")
-	ErrMissingValue   = errors.New("value is required for gauge")
-	ErrMissingDelta   = errors.New("delta is required for counter")
-	ErrEmptyID        = errors.New("metric ID is required")
-	ErrEmptyBatch     = errors.New("empty batch")
+	// ErrInvalidType — неизвестный тип метрики (не counter и не gauge).
+	ErrInvalidType = errors.New("unknown metric type")
+	// ErrMissingValue — для gauge не передано значение.
+	ErrMissingValue = errors.New("value is required for gauge")
+	// ErrMissingDelta — для counter не передана дельта.
+	ErrMissingDelta = errors.New("delta is required for counter")
+	// ErrEmptyID — не указано имя метрики.
+	ErrEmptyID = errors.New("metric ID is required")
+	// ErrEmptyBatch — передан пустой батч метрик.
+	ErrEmptyBatch = errors.New("empty batch")
 )
 
-// MetricsService описывает бизнес-логику работы с метриками
+// MetricsService описывает бизнес-логику работы с метриками.
 type MetricsService interface {
+	// Update обновляет метрику по типу: для gauge используется value,
+	// для counter — delta. Возвращает ErrInvalidType при неизвестном типе.
 	Update(ctx context.Context, name, mType string, value float64, delta int64) error
+	// UpdateJSON обновляет метрику из model.Metrics и возвращает её
+	// актуальное состояние.
 	UpdateJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error)
+	// GetValue возвращает текущее значение метрики в виде строки.
 	GetValue(ctx context.Context, name, mType string) (string, error)
+	// GetJSON возвращает метрику с заполненным актуальным значением.
 	GetJSON(ctx context.Context, metric model.Metrics) (model.Metrics, error)
+	// UpdateBatch обновляет несколько метрик за один вызов.
 	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
+	// GetAll возвращает копии всех gauge- и counter-метрик.
 	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
+	// Ping проверяет доступность хранилища (БД).
 	Ping(ctx context.Context) error
 }
 
