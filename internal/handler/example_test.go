@@ -57,10 +57,12 @@ func ExampleMetricsHandler_ValueHandler() {
 	defer ts.Close()
 
 	// Сначала записываем метрику.
-	if _, err := http.Post(ts.URL+"/update/counter/Requests/10", "text/plain", nil); err != nil {
+	seed, err := http.Post(ts.URL+"/update/counter/Requests/10", "text/plain", nil)
+	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	_ = seed.Body.Close()
 
 	resp, err := http.Get(ts.URL + "/value/counter/Requests")
 	if err != nil {
@@ -101,12 +103,14 @@ func ExampleMetricsHandler_ValueJSONHandler() {
 	ts := newExampleServer()
 	defer ts.Close()
 
-	if _, err := http.Post(ts.URL+"/update/",
+	seed, err := http.Post(ts.URL+"/update/",
 		"application/json",
-		strings.NewReader(`{"id":"Temp","type":"gauge","value":36.6}`)); err != nil {
+		strings.NewReader(`{"id":"Temp","type":"gauge","value":36.6}`))
+	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	_ = seed.Body.Close()
 
 	resp, err := http.Post(ts.URL+"/value/",
 		"application/json",
