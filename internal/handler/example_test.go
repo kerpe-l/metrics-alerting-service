@@ -43,7 +43,7 @@ func ExampleMetricsHandler_UpdateHandler() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	fmt.Println(resp.StatusCode)
 	// Output:
@@ -67,7 +67,7 @@ func ExampleMetricsHandler_ValueHandler() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("%d %s\n", resp.StatusCode, body)
@@ -87,7 +87,7 @@ func ExampleMetricsHandler_UpdateJSONHandler() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out, _ := io.ReadAll(resp.Body)
 	fmt.Print(string(out))
@@ -115,7 +115,7 @@ func ExampleMetricsHandler_ValueJSONHandler() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out, _ := io.ReadAll(resp.Body)
 	fmt.Print(string(out))
@@ -136,7 +136,7 @@ func ExampleMetricsHandler_UpdateBatchHandler() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	fmt.Println(resp.StatusCode)
 	// Output:
@@ -155,7 +155,7 @@ func ExampleMetricsHandler_PingDB() {
 		fmt.Println(err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	fmt.Println(resp.StatusCode)
 	// Output:
