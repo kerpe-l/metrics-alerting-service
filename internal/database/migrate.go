@@ -4,11 +4,13 @@ package database
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/migrations"
 )
 
@@ -25,6 +27,13 @@ func RunMigrations(dsn string) error {
 	if err != nil {
 		return err
 	}
+	// migrate открывает собственное соединение к БД (отдельно от pgxpool):
+	// без Close оно останется висеть после применения миграций.
+	defer func() {
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			logger.Log.Error(fmt.Sprintf("закрытие migrate: source=%v db=%v", srcErr, dbErr))
+		}
+	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return err
