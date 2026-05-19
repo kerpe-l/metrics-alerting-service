@@ -60,7 +60,7 @@ func (p *Publisher) worker(o Observer, ch <-chan Event) {
 	defer p.wg.Done()
 	for ev := range ch {
 		if err := o.Notify(p.ctx, ev); err != nil {
-			logger.Log.Error("аудит: ошибка наблюдателя: " + err.Error())
+			logger.Log.Error("audit: observer error: " + err.Error())
 		}
 	}
 }
@@ -77,7 +77,7 @@ func (p *Publisher) Publish(ev Event) {
 		select {
 		case ch <- ev:
 		default:
-			logger.Log.Error(fmt.Sprintf("аудит: очередь наблюдателя #%d переполнена, событие отброшено", i))
+			logger.Log.Error(fmt.Sprintf("audit: observer #%d queue full, event dropped", i))
 		}
 	}
 }

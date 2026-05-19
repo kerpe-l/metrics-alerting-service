@@ -23,7 +23,7 @@ type FileSink struct {
 func NewFileSink(path string) (*FileSink, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("открыть файл аудита %q: %w", path, err)
+		return nil, fmt.Errorf("open audit file %q: %w", path, err)
 	}
 	return &FileSink{file: f}, nil
 }
@@ -36,7 +36,7 @@ func (s *FileSink) Notify(ctx context.Context, ev Event) error {
 
 	data, err := json.Marshal(ev)
 	if err != nil {
-		return fmt.Errorf("сериализация события: %w", err)
+		return fmt.Errorf("marshal event: %w", err)
 	}
 	data = append(data, '\n')
 
@@ -46,7 +46,7 @@ func (s *FileSink) Notify(ctx context.Context, ev Event) error {
 		return ErrSinkClosed
 	}
 	if _, err := s.file.Write(data); err != nil {
-		return fmt.Errorf("запись события в файл: %w", err)
+		return fmt.Errorf("write event to file: %w", err)
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func (s *FileSink) Close() error {
 	}
 	s.closed = true
 	if err := s.file.Close(); err != nil {
-		return fmt.Errorf("закрытие файла аудита: %w", err)
+		return fmt.Errorf("close audit file: %w", err)
 	}
 	return nil
 }
