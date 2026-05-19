@@ -34,6 +34,18 @@ func (o *recordingObserver) snapshot() []Event {
 	return out
 }
 
+// closingObserver — наблюдатель, реализующий io.Closer.
+type closingObserver struct {
+	recordingObserver
+	closed   atomic.Bool
+	closeErr error
+}
+
+func (o *closingObserver) Close() error {
+	o.closed.Store(true)
+	return o.closeErr
+}
+
 // blockingObserver удерживает Notify до закрытия done или отмены контекста.
 type blockingObserver struct {
 	started chan struct{}
@@ -64,6 +76,14 @@ func (o *blockingObserver) Notify(ctx context.Context, _ Event) error {
 
 func (o *blockingObserver) release() { close(o.done) }
 
+// withBufferSize временно подменяет ёмкость очереди наблюдателя.
+func withBufferSize(t *testing.T, n int) {
+	t.Helper()
+	orig := bufferSize
+	bufferSize = n
+	t.Cleanup(func() { bufferSize = orig })
+}
+
 func TestPublisher_PublishWithoutObservers(t *testing.T) {
 	p := NewPublisher()
 	p.Publish(Event{Timestamp: 1, Metrics: []string{"x"}, IPAddress: "1.1.1.1"})
@@ -71,11 +91,9 @@ func TestPublisher_PublishWithoutObservers(t *testing.T) {
 }
 
 func TestPublisher_DispatchesToAllObservers(t *testing.T) {
-	p := NewPublisher()
 	a := &recordingObserver{}
 	b := &recordingObserver{}
-	p.Register(a)
-	p.Register(b)
+	p := NewPublisher(a, b)
 
 	ev := Event{Timestamp: 42, Metrics: []string{"Alloc", "Frees"}, IPAddress: "10.0.0.1"}
 	p.Publish(ev)
@@ -86,17 +104,13 @@ func TestPublisher_DispatchesToAllObservers(t *testing.T) {
 }
 
 func TestPublisher_PublishIsNonBlocking(t *testing.T) {
-	p := NewPublisher()
 	blk := newBlockingObserver()
-	p.Register(blk)
+	p := NewPublisher(blk)
 
 	start := time.Now()
 	p.Publish(Event{Timestamp: 1})
-	elapsed := time.Since(start)
+	assert.Less(t, time.Since(start), 50*time.Millisecond, "Publish должен возвращать управление сразу")
 
-	assert.Less(t, elapsed, 50*time.Millisecond, "Publish должен возвращать управление сразу")
-
-	// Дожидаемся, что наблюдатель действительно вошёл в Notify.
 	select {
 	case <-blk.started:
 	case <-time.After(time.Second):
@@ -107,33 +121,28 @@ func TestPublisher_PublishIsNonBlocking(t *testing.T) {
 	require.NoError(t, p.Close(context.Background()))
 }
 
-func TestPublisher_CloseWaitsForObservers(t *testing.T) {
-	p := NewPublisher()
+func TestPublisher_CloseDeliversBufferedEvents(t *testing.T) {
 	rec := &recordingObserver{}
-
-	// Наблюдатель с искусственной задержкой.
 	slow := observerFunc(func(ctx context.Context, ev Event) error {
 		select {
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 		return rec.Notify(ctx, ev)
 	})
-	p.Register(slow)
+	p := NewPublisher(slow)
 
-	p.Publish(Event{Timestamp: 7})
+	p.Publish(Event{Timestamp: 1})
+	p.Publish(Event{Timestamp: 2})
 
-	start := time.Now()
 	require.NoError(t, p.Close(context.Background()))
-	assert.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond)
-	assert.Len(t, rec.snapshot(), 1)
+	assert.Len(t, rec.snapshot(), 2)
 }
 
 func TestPublisher_CloseRespectsContextDeadline(t *testing.T) {
-	p := NewPublisher()
 	blk := newBlockingObserver()
-	p.Register(blk)
+	p := NewPublisher(blk)
 
 	p.Publish(Event{Timestamp: 1})
 	<-blk.started
@@ -143,16 +152,11 @@ func TestPublisher_CloseRespectsContextDeadline(t *testing.T) {
 
 	err := p.Close(ctx)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-
-	// После Close внутренний контекст отменён — освобождаем наблюдателя,
-	// чтобы не оставлять висящую горутину для следующих тестов.
-	blk.release()
 }
 
 func TestPublisher_DropsAfterClose(t *testing.T) {
-	p := NewPublisher()
 	rec := &recordingObserver{}
-	p.Register(rec)
+	p := NewPublisher(rec)
 
 	require.NoError(t, p.Close(context.Background()))
 	p.Publish(Event{Timestamp: 1})
@@ -161,11 +165,9 @@ func TestPublisher_DropsAfterClose(t *testing.T) {
 }
 
 func TestPublisher_ObserverErrorDoesNotAffectOthers(t *testing.T) {
-	p := NewPublisher()
 	failing := &recordingObserver{err: errors.New("boom")}
 	healthy := &recordingObserver{}
-	p.Register(failing)
-	p.Register(healthy)
+	p := NewPublisher(failing, healthy)
 
 	ev := Event{Timestamp: 1, Metrics: []string{"m"}}
 	p.Publish(ev)
@@ -173,6 +175,46 @@ func TestPublisher_ObserverErrorDoesNotAffectOthers(t *testing.T) {
 
 	assert.Equal(t, []Event{ev}, failing.snapshot())
 	assert.Equal(t, []Event{ev}, healthy.snapshot())
+}
+
+func TestPublisher_DropsEventsWhenBufferFull(t *testing.T) {
+	withBufferSize(t, 1)
+	blk := newBlockingObserver()
+	p := NewPublisher(blk)
+
+	// Воркер забирает первое событие и блокируется в Notify.
+	p.Publish(Event{Timestamp: 1})
+	<-blk.started
+
+	p.Publish(Event{Timestamp: 2}) // занимает буфер (ёмкость 1)
+	p.Publish(Event{Timestamp: 3}) // буфер полон — отбрасывается
+	p.Publish(Event{Timestamp: 4}) // отбрасывается
+
+	blk.release()
+	require.NoError(t, p.Close(context.Background()))
+
+	// Обработаны только событие из воркера и одно буферизированное.
+	assert.Equal(t, int32(2), blk.hits.Load())
+}
+
+func TestPublisher_CloseClosesObservers(t *testing.T) {
+	o := &closingObserver{}
+	p := NewPublisher(o)
+
+	require.NoError(t, p.Close(context.Background()))
+	assert.True(t, o.closed.Load())
+}
+
+func TestPublisher_CloseAggregatesObserverCloseErrors(t *testing.T) {
+	err1 := errors.New("close-1")
+	err2 := errors.New("close-2")
+	o1 := &closingObserver{closeErr: err1}
+	o2 := &closingObserver{closeErr: err2}
+	p := NewPublisher(o1, o2)
+
+	err := p.Close(context.Background())
+	assert.ErrorIs(t, err, err1)
+	assert.ErrorIs(t, err, err2)
 }
 
 // observerFunc — адаптер функции к Observer.

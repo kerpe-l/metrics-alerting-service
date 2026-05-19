@@ -44,9 +44,8 @@ func newHandlerWithAudit(t *testing.T) (*MetricsHandler, *captureObserver, func(
 	t.Helper()
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricsService(storage)
-	pub := audit.NewPublisher()
 	obs := &captureObserver{}
-	pub.Register(obs)
+	pub := audit.NewPublisher(obs)
 	h := &MetricsHandler{Service: svc, Audit: pub}
 	cleanup := func() {
 		require.NoError(t, pub.Close(context.Background()))

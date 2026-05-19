@@ -106,7 +106,7 @@ func main() {
 	svc := service.NewMetricsService(st)
 
 	// Аудит: создаём Publisher, если задан хотя бы один приёмник.
-	auditPub, auditFileSink, err := setupAudit(cfg)
+	auditPub, err := setupAudit(cfg)
 	if err != nil {
 		logger.Log.Fatal("Не удалось настроить аудит: " + err.Error())
 	}
@@ -182,45 +182,37 @@ func main() {
 		onShutdown()
 	}
 
-	// Дожидаемся доставки событий аудита и закрываем файл-приёмник.
+	// Дожидаемся доставки событий аудита; Publisher сам закрывает приёмники.
 	if auditPub != nil {
 		if err := auditPub.Close(shutdownCtx); err != nil {
-			logger.Log.Error("Ошибка ожидания аудита: " + err.Error())
-		}
-	}
-	if auditFileSink != nil {
-		if err := auditFileSink.Close(); err != nil {
-			logger.Log.Error("Ошибка закрытия файла аудита: " + err.Error())
+			logger.Log.Error("Ошибка завершения аудита: " + err.Error())
 		}
 	}
 
 	logger.Log.Info("Сервер остановлен")
 }
 
-// setupAudit создаёт Publisher и регистрирует приёмники по конфигурации.
-// Возвращает (nil, nil, nil), если ни один приёмник не задан.
-// Файловый приёмник возвращается отдельно, чтобы закрыть его после Publisher.Close.
-func setupAudit(cfg *config.ServerConfig) (*audit.Publisher, *audit.FileSink, error) {
+// setupAudit создаёт Publisher с приёмниками по конфигурации.
+// Возвращает (nil, nil), если ни один приёмник не задан. Закрытие приёмников
+// (в т.ч. файлового) берёт на себя Publisher.Close.
+func setupAudit(cfg *config.ServerConfig) (*audit.Publisher, error) {
 	if cfg.AuditFile == "" && cfg.AuditURL == "" {
-		return nil, nil, nil
+		return nil, nil
 	}
 
-	pub := audit.NewPublisher()
-
-	var fileSink *audit.FileSink
+	var observers []audit.Observer
 	if cfg.AuditFile != "" {
 		fs, err := audit.NewFileSink(cfg.AuditFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		fileSink = fs
-		pub.Register(fs)
+		observers = append(observers, fs)
 		logger.Log.Info("Аудит: файл " + cfg.AuditFile)
 	}
 	if cfg.AuditURL != "" {
-		pub.Register(audit.NewHTTPSink(cfg.AuditURL))
+		observers = append(observers, audit.NewHTTPSink(cfg.AuditURL))
 		logger.Log.Info("Аудит: URL " + cfg.AuditURL)
 	}
 
-	return pub, fileSink, nil
+	return audit.NewPublisher(observers...), nil
 }
