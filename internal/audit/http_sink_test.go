@@ -42,16 +42,53 @@ func TestHTTPSink_PostsJSONEvent(t *testing.T) {
 	assert.Equal(t, ev, decoded)
 }
 
-func TestHTTPSink_NonSuccessStatusReturnsError(t *testing.T) {
+func TestHTTPSink_NonRetriableStatusReturnsErrorWithoutRetry(t *testing.T) {
+	var hits atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer ts.Close()
 
 	sink := NewHTTPSink(ts.URL)
-	err := sink.Notify(context.Background(), Event{Timestamp: 1})
+	err := sink.Notify(t.Context(), Event{Timestamp: 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "400")
+	assert.Equal(t, int32(1), hits.Load(), "4xx не должен повторяться")
+}
+
+func TestHTTPSink_RetriesOn5xxThenSucceeds(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	sink := NewHTTPSink(ts.URL)
+	require.NoError(t, sink.Notify(t.Context(), Event{Timestamp: 1}))
+	assert.Equal(t, int32(2), hits.Load(), "первый 5xx должен повлечь повтор")
+}
+
+func TestHTTPSink_RetriesExhaustedReturnsError(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	sink := NewHTTPSink(ts.URL)
+	err := sink.Notify(ctx, Event{Timestamp: 1})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
+	assert.GreaterOrEqual(t, hits.Load(), int32(1))
 }
 
 func TestHTTPSink_ContextCancelAbortsRequest(t *testing.T) {
