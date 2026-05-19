@@ -15,12 +15,14 @@ func BenchmarkMiddleware_CompressJSON(b *testing.B) {
 	})
 	mw := Middleware(handler)
 
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
+		b.StopTimer()
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
 		w := httptest.NewRecorder()
+		b.StartTimer()
+
 		mw.ServeHTTP(w, req)
 	}
 }
