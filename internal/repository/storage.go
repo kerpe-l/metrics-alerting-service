@@ -1,3 +1,5 @@
+// Package repository определяет интерфейс хранилища метрик Storage и его
+// in-memory реализацию MemStorage.
 package repository
 
 import (
@@ -12,22 +14,33 @@ import (
 // ErrNoDB означает, что хранилище не поддерживает проверку соединения с БД.
 var ErrNoDB = errors.New("no database connection")
 
+// Storage — хранилище метрик. Реализации: MemStorage (память),
+// file.SyncStorage (файл), pg.Storage (PostgreSQL).
 type Storage interface {
+	// UpdateGauge замещает значение gauge-метрики.
 	UpdateGauge(ctx context.Context, name string, value float64) error
+	// UpdateCounter увеличивает counter-метрику на value.
 	UpdateCounter(ctx context.Context, name string, value int64) error
+	// UpdateBatch применяет батч метрик; counter суммируются, gauge замещаются.
 	UpdateBatch(ctx context.Context, metrics []model.Metrics) error
+	// GetGauge возвращает значение gauge и признак наличия.
 	GetGauge(ctx context.Context, name string) (float64, bool)
+	// GetCounter возвращает значение counter и признак наличия.
 	GetCounter(ctx context.Context, name string) (int64, bool)
+	// GetAll возвращает копии всех gauge- и counter-метрик.
 	GetAll(ctx context.Context) (map[string]float64, map[string]int64)
+	// Ping проверяет соединение с БД; ErrNoDB, если хранилище без БД.
 	Ping(ctx context.Context) error
 }
 
+// MemStorage — потокобезопасное in-memory хранилище метрик.
 type MemStorage struct {
 	gauges   map[string]float64
 	counters map[string]int64
 	mu       sync.RWMutex
 }
 
+// NewMemStorage создаёт пустое in-memory хранилище.
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		gauges:   make(map[string]float64),

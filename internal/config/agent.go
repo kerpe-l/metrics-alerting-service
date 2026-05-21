@@ -9,11 +9,16 @@ import (
 
 // AgentConfig содержит конфигурацию агента сбора метрик.
 type AgentConfig struct {
-	Address        string
+	// Address — адрес и порт сервера метрик.
+	Address string
+	// ReportInterval — интервал отправки метрик на сервер, сек.
 	ReportInterval int
-	PollInterval   int
-	Key            string
-	RateLimit      int
+	// PollInterval — интервал опроса метрик, сек.
+	PollInterval int
+	// Key — ключ для подписи HMAC-SHA256 (пусто = подпись отключена).
+	Key string
+	// RateLimit — максимум одновременных запросов к серверу.
+	RateLimit int
 }
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.

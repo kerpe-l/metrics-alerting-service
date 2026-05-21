@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	_ "net/http/pprof"
 	"os/signal"
 	"syscall"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
@@ -102,7 +104,14 @@ func main() {
 	}
 
 	svc := service.NewMetricsService(st)
-	h := &handler.MetricsHandler{Service: svc}
+
+	// Аудит: создаём Publisher, если задан хотя бы один приёмник.
+	auditPub, err := setupAudit(cfg)
+	if err != nil {
+		logger.Log.Fatal("Не удалось настроить аудит: " + err.Error())
+	}
+
+	h := &handler.MetricsHandler{Service: svc, Audit: auditPub}
 
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
@@ -135,6 +144,23 @@ func main() {
 
 	logger.Log.Info("Сервер запущен на " + cfg.Address)
 
+	// Опциональный pprof debug-сервер на отдельном порту.
+	// Использует DefaultServeMux, в который регистрируются хендлеры из net/http/pprof.
+	var pprofSrv *http.Server
+	if cfg.PprofAddr != "" {
+		pprofSrv = &http.Server{
+			Addr:              cfg.PprofAddr,
+			Handler:           http.DefaultServeMux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			if err := pprofSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Log.Error("pprof server: " + err.Error())
+			}
+		}()
+		logger.Log.Info("pprof доступен на " + cfg.PprofAddr + "/debug/pprof/")
+	}
+
 	// Ждём сигнал завершения
 	<-ctx.Done()
 	logger.Log.Info("Получен сигнал завершения, останавливаем сервер...")
@@ -146,10 +172,47 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Log.Error("Ошибка при остановке сервера: " + err.Error())
 	}
+	if pprofSrv != nil {
+		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Log.Error("Ошибка при остановке pprof: " + err.Error())
+		}
+	}
 
 	if onShutdown != nil {
 		onShutdown()
 	}
 
+	// Дожидаемся доставки событий аудита; Publisher сам закрывает приёмники.
+	if auditPub != nil {
+		if err := auditPub.Close(shutdownCtx); err != nil {
+			logger.Log.Error("Ошибка завершения аудита: " + err.Error())
+		}
+	}
+
 	logger.Log.Info("Сервер остановлен")
+}
+
+// setupAudit создаёт Publisher с приёмниками по конфигурации.
+// Возвращает (nil, nil), если ни один приёмник не задан. Закрытие приёмников
+// (в т.ч. файлового) берёт на себя Publisher.Close.
+func setupAudit(cfg *config.ServerConfig) (*audit.Publisher, error) {
+	if cfg.AuditFile == "" && cfg.AuditURL == "" {
+		return nil, nil
+	}
+
+	var observers []audit.Observer
+	if cfg.AuditFile != "" {
+		fs, err := audit.NewFileSink(cfg.AuditFile)
+		if err != nil {
+			return nil, err
+		}
+		observers = append(observers, fs)
+		logger.Log.Info("Аудит: файл " + cfg.AuditFile)
+	}
+	if cfg.AuditURL != "" {
+		observers = append(observers, audit.NewHTTPSink(cfg.AuditURL))
+		logger.Log.Info("Аудит: URL " + cfg.AuditURL)
+	}
+
+	return audit.NewPublisher(observers...), nil
 }

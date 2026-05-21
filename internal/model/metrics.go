@@ -1,19 +1,28 @@
+// Package model описывает доменную модель метрик, общую для сервера и агента.
 package model
 
+// Типы метрик, используемые в поле Metrics.MType.
 const (
+	// Counter — счётчик: значения суммируются (накопительная метрика).
 	Counter = "counter"
-	Gauge   = "gauge"
+	// Gauge — измеритель: новое значение замещает предыдущее.
+	Gauge = "gauge"
 )
 
-// NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
-// Органичиваясь плоской моделью.
-// Delta и Value объявлены через указатели,
-// что бы отличать значение "0", от не заданного значения
-// и соответственно не кодировать в структуру.
+// Metrics описывает одну метрику в плоской JSON-модели.
+//
+// Delta и Value — указатели, чтобы отличать незаданное значение от нуля
+// (отсутствующее поле не кодируется в JSON). Иерархическая вложенность
+// сознательно не вводится, чтобы не усложнять модель.
 type Metrics struct {
-	ID    string   `json:"id"`
-	MType string   `json:"type"`
-	Delta *int64   `json:"delta,omitempty"`
+	// ID — имя метрики.
+	ID string `json:"id"`
+	// MType — тип метрики: model.Counter или model.Gauge.
+	MType string `json:"type"`
+	// Delta — значение для counter (накапливается). nil для gauge.
+	Delta *int64 `json:"delta,omitempty"`
+	// Value — значение для gauge (замещается). nil для counter.
 	Value *float64 `json:"value,omitempty"`
-	Hash  string   `json:"hash,omitempty"`
+	// Hash — HMAC-SHA256 подпись метрики (опционально).
+	Hash string `json:"hash,omitempty"`
 }

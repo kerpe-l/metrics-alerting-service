@@ -114,7 +114,7 @@ func TestMetricsHandler_UpdateHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, _ := testRequest(t, ts, tt.method, tt.url)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			assert.Equal(t, tt.want.code, resp.StatusCode)
 		})
 	}
@@ -162,7 +162,7 @@ func TestMetricsHandler_ValueHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, body := testRequest(t, ts, http.MethodGet, tt.url)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 			if tt.wantBody != "" {
 				assert.Contains(t, body, tt.wantBody)
@@ -214,7 +214,7 @@ func TestMetricsHandler_PingDB(t *testing.T) {
 			defer ts.Close()
 
 			resp, _ := testRequest(t, ts, http.MethodGet, "/ping")
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 		})
 	}
@@ -233,7 +233,7 @@ func TestMetricsHandler_RootHandler(t *testing.T) {
 	defer ts.Close()
 
 	resp, body := testRequest(t, ts, http.MethodGet, "/")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/html", resp.Header.Get("Content-Type"))
@@ -314,7 +314,7 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, body := testJSONRequest(t, ts, http.MethodPost, "/update/", tt.payload)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 
@@ -337,10 +337,10 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 	t.Run("counter accumulation", func(t *testing.T) {
 		resp1, _ := testJSONRequest(t, ts, http.MethodPost, "/update/",
 			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(5)})
-		resp1.Body.Close()
+		_ = resp1.Body.Close()
 		resp, body := testJSONRequest(t, ts, http.MethodPost, "/update/",
 			model.Metrics{ID: "accCounter", MType: model.Counter, Delta: ptrInt64(3)})
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var result model.Metrics
 		require.NoError(t, json.Unmarshal([]byte(body), &result))
@@ -355,7 +355,7 @@ func TestMetricsHandler_UpdateJSONHandler(t *testing.T) {
 
 		resp, err := ts.Client().Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 }
@@ -408,7 +408,7 @@ func TestMetricsHandler_ValueJSONHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, body := testJSONRequest(t, ts, http.MethodPost, "/value/", tt.payload)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 
@@ -483,7 +483,7 @@ func TestUpdateBatchHandler_MockService(t *testing.T) {
 			defer ts.Close()
 
 			resp, _ := testJSONRequest(t, ts, http.MethodPost, "/updates/", tt.body)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 		})
@@ -505,7 +505,7 @@ func TestUpdateBatchHandler_MockService(t *testing.T) {
 
 		resp, err := ts.Client().Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
@@ -550,7 +550,7 @@ func TestUpdateJSONHandler_ServiceError(t *testing.T) {
 			defer ts.Close()
 
 			resp, _ := testJSONRequest(t, ts, http.MethodPost, "/update/", tt.payload)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.wantCode, resp.StatusCode)
 		})

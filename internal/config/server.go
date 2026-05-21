@@ -1,3 +1,5 @@
+// Package config парсит конфигурацию сервера и агента из флагов и переменных
+// окружения. Приоритет источников: env > flag > значение по умолчанию.
 package config
 
 import (
@@ -8,12 +10,24 @@ import (
 
 // ServerConfig содержит конфигурацию сервера метрик.
 type ServerConfig struct {
-	Address         string
-	StoreInterval   int
+	// Address — адрес и порт HTTP-сервера.
+	Address string
+	// StoreInterval — интервал сохранения метрик в файл, сек (0 = синхронно).
+	StoreInterval int
+	// FileStoragePath — путь к файлу персистентности метрик.
 	FileStoragePath string
-	Restore         bool
-	DatabaseDSN     string
-	Key             string
+	// Restore — восстанавливать метрики из файла при старте.
+	Restore bool
+	// DatabaseDSN — строка подключения к PostgreSQL (пусто = режим память/файл).
+	DatabaseDSN string
+	// Key — ключ для подписи HMAC-SHA256 (пусто = подпись отключена).
+	Key string
+	// AuditFile — путь к файлу аудита (пусто = файловый аудит отключён).
+	AuditFile string
+	// AuditURL — URL для POST событий аудита (пусто = remote-аудит отключён).
+	AuditURL string
+	// PprofAddr — адрес pprof debug-эндпоинта (пусто = отключён).
+	PprofAddr string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
@@ -27,6 +41,9 @@ func NewServerConfig() *ServerConfig {
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database connection string")
 	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
+	flag.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
 
 	flag.Parse()
 
@@ -51,6 +68,15 @@ func NewServerConfig() *ServerConfig {
 	}
 	if v, ok := os.LookupEnv("KEY"); ok {
 		cfg.Key = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		cfg.AuditFile = v
+	}
+	if v, ok := os.LookupEnv("AUDIT_URL"); ok {
+		cfg.AuditURL = v
+	}
+	if v, ok := os.LookupEnv("PPROF_ADDR"); ok {
+		cfg.PprofAddr = v
 	}
 
 	return cfg

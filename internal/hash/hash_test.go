@@ -59,11 +59,11 @@ func TestVerify(t *testing.T) {
 	validHash := Compute(data, key)
 
 	tests := []struct {
-		name     string
-		data     []byte
-		key      string
-		hash     string
-		wantOK   bool
+		name   string
+		data   []byte
+		key    string
+		hash   string
+		wantOK bool
 	}{
 		{
 			name:   "valid hash",
@@ -122,7 +122,7 @@ func TestMiddleware(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(respBody))
+		_, _ = w.Write([]byte(respBody))
 	})
 
 	tests := []struct {

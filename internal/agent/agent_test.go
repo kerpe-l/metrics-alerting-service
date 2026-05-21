@@ -88,10 +88,10 @@ func TestCollector_Metrics(t *testing.T) {
 
 func TestCollector_CollectExtra(t *testing.T) {
 	tests := []struct {
-		name           string
-		wantTotalMem   bool
-		wantFreeMem    bool
-		wantCPU        bool
+		name         string
+		wantTotalMem bool
+		wantFreeMem  bool
+		wantCPU      bool
 	}{
 		{
 			name:         "Сбор дополнительных метрик (gopsutil)",
@@ -189,7 +189,11 @@ func TestSender_Send(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create gzip reader: %v", err)
 		}
-		defer gz.Close()
+		defer func() {
+			if err := gz.Close(); err != nil {
+				t.Errorf("failed to close gzip reader: %v", err)
+			}
+		}()
 
 		if err := json.NewDecoder(gz).Decode(&received); err != nil {
 			t.Fatalf("failed to decode batch: %v", err)

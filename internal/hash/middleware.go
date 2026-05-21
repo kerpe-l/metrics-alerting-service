@@ -4,15 +4,29 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"sync"
+
+	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 )
 
 const headerName = "HashSHA256"
 
+// bufPool переиспользует bytes.Buffer для перехвата тел запроса/ответа.
+var bufPool = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
+
+func getBuf() *bytes.Buffer {
+	b := bufPool.Get().(*bytes.Buffer)
+	b.Reset()
+	return b
+}
+
 // hashResponseWriter перехватывает тело ответа для вычисления хеша.
 type hashResponseWriter struct {
 	http.ResponseWriter
-	buf        bytes.Buffer
-	statusCode int
+	buf         *bytes.Buffer
+	statusCode  int
 	wroteHeader bool
 }
 
@@ -42,7 +56,7 @@ func Middleware(key string) func(http.Handler) http.Handler {
 					http.Error(w, "failed to read body", http.StatusInternalServerError)
 					return
 				}
-				r.Body.Close()
+				_ = r.Body.Close()
 
 				if !Verify(body, key, receivedHash) {
 					http.Error(w, "hash mismatch", http.StatusBadRequest)
@@ -53,9 +67,12 @@ func Middleware(key string) func(http.Handler) http.Handler {
 				r.Body = io.NopCloser(bytes.NewReader(body))
 			}
 
-			// Перехватываем ответ для вычисления хеша.
+			// Перехватываем ответ для вычисления хеша. Буфер берётся из пула.
+			buf := getBuf()
+			defer bufPool.Put(buf)
 			hw := &hashResponseWriter{
 				ResponseWriter: w,
+				buf:            buf,
 				statusCode:     http.StatusOK,
 			}
 			next.ServeHTTP(hw, r)
@@ -70,7 +87,9 @@ func Middleware(key string) func(http.Handler) http.Handler {
 				w.WriteHeader(hw.statusCode)
 			}
 			if len(respBody) > 0 {
-				w.Write(respBody)
+				if _, err := w.Write(respBody); err != nil {
+					logger.Log.Error("ошибка записи ответа: " + err.Error())
+				}
 			}
 		})
 	}
