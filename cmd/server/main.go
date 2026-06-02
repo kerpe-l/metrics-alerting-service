@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
+	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
@@ -25,7 +27,19 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/service"
 )
 
+// Сведения о сборке. Подставляются линкером через -ldflags "-X main.buildVersion=...".
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	// Печать сведений о сборке в stdout до инициализации логгера.
+	if err := buildinfo.Fprint(os.Stdout, buildVersion, buildDate, buildCommit); err != nil {
+		panic(err)
+	}
+
 	cfg := config.NewServerConfig()
 
 	if err := logger.Initialize("info"); err != nil {

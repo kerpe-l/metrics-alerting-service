@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -10,12 +11,25 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
+	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
 
+// Сведения о сборке. Подставляются линкером через -ldflags "-X main.buildVersion=...".
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	// Печать сведений о сборке в stdout до инициализации логгера.
+	if err := buildinfo.Fprint(os.Stdout, buildVersion, buildDate, buildCommit); err != nil {
+		panic(err)
+	}
+
 	cfg, err := config.NewAgentConfig()
 	if err != nil {
 		panic(err)
