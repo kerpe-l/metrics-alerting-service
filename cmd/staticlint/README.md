@@ -6,7 +6,9 @@ Multichecker для статического анализа проекта. Со
 - все анализаторы класса `SA` из `honnef.co/go/tools/staticcheck`;
 - анализаторы остальных классов staticcheck: `simple`, `stylecheck`, `quickfix`;
 - публичные сторонние: `bodyclose`, `nilerr`;
-- собственный [`osexit`](./osexit) — запрет прямого вызова `os.Exit` в `func main` пакета `main`.
+- собственные:
+  - [`osexit`](./osexit) — запрет прямого вызова `os.Exit` в `func main` пакета `main`;
+  - [`nofatal`](./nofatal) — запрет `panic` и `log.Fatal`/`log.Panic` вне `main`/`init`.
 
 ## Запуск
 

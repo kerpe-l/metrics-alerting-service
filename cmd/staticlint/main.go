@@ -34,6 +34,7 @@ import (
 	"honnef.co/go/tools/staticcheck"
 	"honnef.co/go/tools/stylecheck"
 
+	"github.com/kerpe-l/metrics-alerting-service/cmd/staticlint/nofatal"
 	"github.com/kerpe-l/metrics-alerting-service/cmd/staticlint/osexit"
 )
 
@@ -72,8 +73,9 @@ func analyzers() []*analysis.Analyzer {
 		bodyclose.Analyzer,
 		nilerr.Analyzer,
 
-		// Собственный.
+		// Собственные.
 		osexit.Analyzer,
+		nofatal.Analyzer,
 	}
 
 	// staticcheck: все SA-проверки.
