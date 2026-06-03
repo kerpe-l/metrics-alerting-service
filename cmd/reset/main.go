@@ -117,7 +117,7 @@ func findTargets(p *packages.Package) []target {
 				if !ok {
 					continue
 				}
-				if _, ok := tspec.Type.(*ast.StructType); !ok {
+				if _, isStruct := tspec.Type.(*ast.StructType); !isStruct {
 					continue
 				}
 				if !commentHasMarker(tspec.Doc) && !commentHasMarker(gd.Doc) {
