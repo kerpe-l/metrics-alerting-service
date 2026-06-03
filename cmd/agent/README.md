@@ -8,6 +8,19 @@
 go build -o agent ./cmd/agent
 ```
 
+### Со сведениями о сборке
+
+Версия, дата и коммит подставляются линкером и печатаются в stdout при старте
+(пустые значения выводятся как `N/A`):
+
+```bash
+go build -ldflags "\
+  -X main.buildVersion=v1.2.3 \
+  -X 'main.buildDate=$(date +%Y-%m-%d)' \
+  -X main.buildCommit=$(git rev-parse --short HEAD)" \
+  -o agent ./cmd/agent
+```
+
 ## Запуск
 
 ```bash

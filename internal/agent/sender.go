@@ -77,12 +77,12 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 	buf.Grow(len(data) / 2)
 	gz := gzipWriterPool.Get().(*gzip.Writer)
 	gz.Reset(&buf)
-	if _, err := gz.Write(data); err != nil {
+	if _, err = gz.Write(data); err != nil {
 		gzipWriterPool.Put(gz)
 		logger.Log.Error("failed to write gzip data", zap.Error(err))
 		return
 	}
-	if err := gz.Close(); err != nil {
+	if err = gz.Close(); err != nil {
 		gzipWriterPool.Put(gz)
 		logger.Log.Error("failed to close gzip writer", zap.Error(err))
 		return
@@ -93,9 +93,9 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 	endpoint := s.serverAddr + "/updates/"
 
 	err = retry.Do(ctx, func() error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(compressed))
-		if err != nil {
-			return err
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(compressed))
+		if reqErr != nil {
+			return reqErr
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
@@ -104,23 +104,23 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 			req.Header.Set("HashSHA256", hash.Compute(data, s.key))
 		}
 
-		resp, err := s.client.Do(req)
-		if err != nil {
-			return err
+		resp, doErr := s.client.Do(req)
+		if doErr != nil {
+			return doErr
 		}
 		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode >= http.StatusInternalServerError {
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return fmt.Errorf("%w: %d (failed to read body: %v)", errServerUnavailable, resp.StatusCode, err)
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				return fmt.Errorf("%w: %d (failed to read body: %v)", errServerUnavailable, resp.StatusCode, readErr)
 			}
 			return fmt.Errorf("%w: %d %s", errServerUnavailable, resp.StatusCode, bytes.TrimSpace(body))
 		}
 		if resp.StatusCode >= http.StatusBadRequest {
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return fmt.Errorf("request rejected: %d (failed to read body: %v)", resp.StatusCode, err)
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				return fmt.Errorf("request rejected: %d (failed to read body: %v)", resp.StatusCode, readErr)
 			}
 			return fmt.Errorf("request rejected: %d %s", resp.StatusCode, bytes.TrimSpace(body))
 		}

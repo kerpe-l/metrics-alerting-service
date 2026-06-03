@@ -1,6 +1,8 @@
 // Package model описывает доменную модель метрик, общую для сервера и агента.
 package model
 
+//go:generate go run github.com/kerpe-l/metrics-alerting-service/cmd/reset .
+
 // Типы метрик, используемые в поле Metrics.MType.
 const (
 	// Counter — счётчик: значения суммируются (накопительная метрика).
@@ -14,6 +16,8 @@ const (
 // Delta и Value — указатели, чтобы отличать незаданное значение от нуля
 // (отсутствующее поле не кодируется в JSON). Иерархическая вложенность
 // сознательно не вводится, чтобы не усложнять модель.
+//
+// generate:reset
 type Metrics struct {
 	// ID — имя метрики.
 	ID string `json:"id"`
