@@ -19,6 +19,8 @@ type AgentConfig struct {
 	Key string
 	// RateLimit — максимум одновременных запросов к серверу.
 	RateLimit int
+	// CryptoKey — путь к файлу с публичным ключом (пусто = шифрование отключено).
+	CryptoKey string
 }
 
 // NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
@@ -31,6 +33,7 @@ func NewAgentConfig() (*AgentConfig, error) {
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
 	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
 	flag.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to public key file for request encryption")
 
 	flag.Parse()
 
@@ -54,6 +57,9 @@ func NewAgentConfig() (*AgentConfig, error) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.RateLimit = n
 		}
+	}
+	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		cfg.CryptoKey = v
 	}
 
 	if cfg.PollInterval <= 0 {

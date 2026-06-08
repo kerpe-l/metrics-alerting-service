@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"net/http"
 	_ "net/http/pprof"
@@ -16,6 +17,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
+	"github.com/kerpe-l/metrics-alerting-service/internal/crypto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -127,8 +129,20 @@ func main() {
 
 	h := &handler.MetricsHandler{Service: svc, Audit: auditPub}
 
+	// Загружаем приватный ключ для расшифровки запросов, если задан.
+	var privKey *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		privKey, err = crypto.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			logger.Log.Fatal("не удалось загрузить приватный ключ: " + err.Error())
+		}
+		logger.Log.Info("расшифровка запросов включена")
+	}
+
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
+	// Расшифровка снаружи gzip: decrypt → gunzip → verify hash.
+	r.Use(crypto.Middleware(privKey))
 	r.Use(gzip.Middleware)
 	r.Use(hash.Middleware(cfg.Key))
 

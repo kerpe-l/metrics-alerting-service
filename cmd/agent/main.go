@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
+	"github.com/kerpe-l/metrics-alerting-service/internal/crypto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
 )
@@ -47,8 +49,18 @@ func main() {
 
 	serverAddr := fmt.Sprintf("http://%s", cfg.Address)
 
+	// Загружаем публичный ключ для шифрования запросов, если задан.
+	var pubKey *rsa.PublicKey
+	if cfg.CryptoKey != "" {
+		pubKey, err = crypto.LoadPublicKey(cfg.CryptoKey)
+		if err != nil {
+			logger.Log.Fatal("не удалось загрузить публичный ключ: " + err.Error())
+		}
+		logger.Log.Info("шифрование запросов включено")
+	}
+
 	collector := agent.NewCollector()
-	sender := agent.NewSender(serverAddr, cfg.Key)
+	sender := agent.NewSender(serverAddr, cfg.Key, pubKey)
 
 	logger.Log.Info("agent started",
 		zap.Duration("poll", pollDuration),

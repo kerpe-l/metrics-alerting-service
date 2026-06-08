@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/kerpe-l/metrics-alerting-service/internal/crypto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
 	"github.com/kerpe-l/metrics-alerting-service/internal/model"
@@ -46,14 +48,17 @@ func isRetriableHTTPError(err error) bool {
 type Sender struct {
 	serverAddr string
 	key        string
+	pubKey     *rsa.PublicKey
 	client     *http.Client
 }
 
 // NewSender создаёт новый отправитель метрик.
-func NewSender(serverAddr, key string) *Sender {
+// При pubKey != nil тело каждого запроса шифруется публичным ключом сервера.
+func NewSender(serverAddr, key string, pubKey *rsa.PublicKey) *Sender {
 	return &Sender{
 		serverAddr: serverAddr,
 		key:        key,
+		pubKey:     pubKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -89,17 +94,33 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 	}
 	gzipWriterPool.Put(gz)
 
-	compressed := buf.Bytes()
+	body := buf.Bytes()
+
+	// Шифруем сжатое тело публичным ключом сервера, если шифрование включено.
+	encrypted := false
+	if s.pubKey != nil {
+		enc, encErr := crypto.Encrypt(s.pubKey, body)
+		if encErr != nil {
+			logger.Log.Error("failed to encrypt body", zap.Error(encErr))
+			return
+		}
+		body = enc
+		encrypted = true
+	}
+
 	endpoint := s.serverAddr + "/updates/"
 
 	err = retry.Do(ctx, func() error {
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(compressed))
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 		if reqErr != nil {
 			return reqErr
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if encrypted {
+			req.Header.Set(crypto.HeaderEncrypted, "1")
+		}
 		if s.key != "" {
 			req.Header.Set("HashSHA256", hash.Compute(data, s.key))
 		}

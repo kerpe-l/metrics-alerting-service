@@ -28,6 +28,8 @@ type ServerConfig struct {
 	AuditURL string
 	// PprofAddr — адрес pprof debug-эндпоинта (пусто = отключён).
 	PprofAddr string
+	// CryptoKey — путь к файлу с приватным ключом (пусто = расшифровка отключена).
+	CryptoKey string
 }
 
 // NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
@@ -44,6 +46,7 @@ func NewServerConfig() *ServerConfig {
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
 	flag.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to private key file for request decryption")
 
 	flag.Parse()
 
@@ -77,6 +80,9 @@ func NewServerConfig() *ServerConfig {
 	}
 	if v, ok := os.LookupEnv("PPROF_ADDR"); ok {
 		cfg.PprofAddr = v
+	}
+	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		cfg.CryptoKey = v
 	}
 
 	return cfg
