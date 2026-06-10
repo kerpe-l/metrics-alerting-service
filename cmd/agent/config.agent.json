@@ -4,5 +4,6 @@
   "poll_interval": "2s",
   "crypto_key": "",
   "key": "",
-  "rate_limit": 1
+  "rate_limit": 1,
+  "shutdown_timeout": "5s"
 }

@@ -51,8 +51,8 @@ func main() {
 		panic(err)
 	}
 
-	// Контекст, отменяемый по SIGINT/SIGTERM
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Контекст, отменяемый по SIGINT/SIGTERM/SIGQUIT
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	var st repository.Storage
@@ -196,8 +196,9 @@ func main() {
 	<-ctx.Done()
 	logger.Log.Info("Получен сигнал завершения, останавливаем сервер...")
 
-	// Даём 5 секунд на завершение текущих запросов
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Даём текущим запросам время на завершение (по умолчанию 5 секунд)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(),
+		time.Duration(cfg.ShutdownTimeout)*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

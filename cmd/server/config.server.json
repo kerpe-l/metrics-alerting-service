@@ -8,5 +8,6 @@
   "key": "",
   "audit_file": "",
   "audit_url": "",
-  "pprof_addr": ""
+  "pprof_addr": "",
+  "shutdown_timeout": "5s"
 }

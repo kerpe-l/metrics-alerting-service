@@ -37,6 +37,7 @@ go build -ldflags "\
 | `-k` | `KEY` | `""` | Ключ для подписи данных (HMAC-SHA256) |
 | `-l` | `RATE_LIMIT` | `1` | Макс. число одновременных запросов к серверу |
 | `--crypto-key` | `CRYPTO_KEY` | `""` | Путь к публичному ключу для шифрования тела запросов |
+| `--shutdown-timeout` | `SHUTDOWN_TIMEOUT` | `5` | Сколько ждать доставки очереди метрик при завершении (сек) |
 | `-c` / `--config` | `CONFIG` | `""` | Путь к JSON-файлу конфигурации |
 
 Приоритет источников: переменная окружения важнее флага, флаг важнее значения из
@@ -55,7 +56,8 @@ go build -ldflags "\
   "poll_interval": "2s",
   "crypto_key": "/path/to/key.pem",
   "key": "",
-  "rate_limit": 1
+  "rate_limit": 1,
+  "shutdown_timeout": "5s"
 }
 ```
 

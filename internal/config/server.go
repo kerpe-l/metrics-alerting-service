@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"strconv"
@@ -30,6 +31,8 @@ type ServerConfig struct {
 	PprofAddr string
 	// CryptoKey — путь к файлу с приватным ключом (пусто = расшифровка отключена).
 	CryptoKey string
+	// ShutdownTimeout — сколько ждать завершения текущих запросов при остановке, сек.
+	ShutdownTimeout int
 }
 
 // serverFileConfig — представление JSON-файла конфигурации сервера. Поля-указатели,
@@ -42,9 +45,10 @@ type serverFileConfig struct {
 	DatabaseDSN   *string `json:"database_dsn"`
 	CryptoKey     *string `json:"crypto_key"`
 	Key           *string `json:"key"`
-	AuditFile     *string `json:"audit_file"`
-	AuditURL      *string `json:"audit_url"`
-	PprofAddr     *string `json:"pprof_addr"`
+	AuditFile       *string `json:"audit_file"`
+	AuditURL        *string `json:"audit_url"`
+	PprofAddr       *string `json:"pprof_addr"`
+	ShutdownTimeout *string `json:"shutdown_timeout"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -84,6 +88,13 @@ func (fc *serverFileConfig) applyTo(cfg *ServerConfig, set map[string]bool) erro
 	if fc.PprofAddr != nil && !set["pprof"] {
 		cfg.PprofAddr = *fc.PprofAddr
 	}
+	if fc.ShutdownTimeout != nil && !set["shutdown-timeout"] {
+		n, err := parseDurationSeconds(*fc.ShutdownTimeout)
+		if err != nil {
+			return err
+		}
+		cfg.ShutdownTimeout = n
+	}
 	return nil
 }
 
@@ -115,6 +126,7 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	fs.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
 	fs.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
 	fs.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to private key file for request decryption")
+	fs.IntVar(&cfg.ShutdownTimeout, "shutdown-timeout", 5, "graceful shutdown timeout in seconds")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -162,6 +174,15 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	}
 	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
 		cfg.CryptoKey = v
+	}
+	if v, ok := os.LookupEnv("SHUTDOWN_TIMEOUT"); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.ShutdownTimeout = n
+		}
+	}
+
+	if cfg.ShutdownTimeout <= 0 {
+		return nil, errors.New("SHUTDOWN_TIMEOUT must be greater than 0")
 	}
 
 	return cfg, nil
