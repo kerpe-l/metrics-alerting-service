@@ -1,5 +1,5 @@
-// Package config парсит конфигурацию сервера и агента из флагов и переменных
-// окружения. Приоритет источников: env > flag > значение по умолчанию.
+// Package config парсит конфигурацию сервера и агента из флагов, переменных
+// окружения и JSON-файла. Приоритет источников: env > flag > config-file > default.
 package config
 
 import (
@@ -32,23 +32,102 @@ type ServerConfig struct {
 	CryptoKey string
 }
 
-// NewServerConfig парсит флаги и переменные окружения, возвращает конфигурацию сервера.
-// Приоритет: env > flag > default.
-func NewServerConfig() *ServerConfig {
+// serverFileConfig — представление JSON-файла конфигурации сервера. Поля-указатели,
+// чтобы отличать отсутствующий ключ (nil) от заданного пустого/нулевого значения.
+type serverFileConfig struct {
+	Address       *string `json:"address"`
+	StoreInterval *string `json:"store_interval"`
+	StoreFile     *string `json:"store_file"`
+	Restore       *bool   `json:"restore"`
+	DatabaseDSN   *string `json:"database_dsn"`
+	CryptoKey     *string `json:"crypto_key"`
+	Key           *string `json:"key"`
+	AuditFile     *string `json:"audit_file"`
+	AuditURL      *string `json:"audit_url"`
+	PprofAddr     *string `json:"pprof_addr"`
+}
+
+// applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
+// не были заданы явно (set). Так файл важнее дефолта, но слабее флага и env.
+func (fc *serverFileConfig) applyTo(cfg *ServerConfig, set map[string]bool) error {
+	if fc.Address != nil && !set["a"] {
+		cfg.Address = *fc.Address
+	}
+	if fc.StoreInterval != nil && !set["i"] {
+		n, err := parseDurationSeconds(*fc.StoreInterval)
+		if err != nil {
+			return err
+		}
+		cfg.StoreInterval = n
+	}
+	if fc.StoreFile != nil && !set["f"] {
+		cfg.FileStoragePath = *fc.StoreFile
+	}
+	if fc.Restore != nil && !set["r"] {
+		cfg.Restore = *fc.Restore
+	}
+	if fc.DatabaseDSN != nil && !set["d"] {
+		cfg.DatabaseDSN = *fc.DatabaseDSN
+	}
+	if fc.CryptoKey != nil && !set["crypto-key"] {
+		cfg.CryptoKey = *fc.CryptoKey
+	}
+	if fc.Key != nil && !set["k"] {
+		cfg.Key = *fc.Key
+	}
+	if fc.AuditFile != nil && !set["audit-file"] {
+		cfg.AuditFile = *fc.AuditFile
+	}
+	if fc.AuditURL != nil && !set["audit-url"] {
+		cfg.AuditURL = *fc.AuditURL
+	}
+	if fc.PprofAddr != nil && !set["pprof"] {
+		cfg.PprofAddr = *fc.PprofAddr
+	}
+	return nil
+}
+
+// NewServerConfig парсит флаги, JSON-файл и переменные окружения, возвращает
+// конфигурацию сервера. Приоритет: env > flag > config-file > default.
+func NewServerConfig() (*ServerConfig, error) {
+	return parseServerConfig(os.Args[1:])
+}
+
+// parseServerConfig разбирает конфигурацию сервера из args (без имени программы),
+// env и конфиг-файла. Выделен из NewServerConfig ради тестируемости.
+func parseServerConfig(args []string) (*ServerConfig, error) {
 	cfg := &ServerConfig{}
+	// ExitOnError сохраняет прежнее CLI-поведение глобального flag.Parse:
+	// -h и опечатка во флаге печатают usage и завершают процесс без panic.
+	fs := flag.NewFlagSet("server", flag.ExitOnError)
 
-	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&cfg.StoreInterval, "i", 300, "store interval in seconds (0 = sync)")
-	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file storage path")
-	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
-	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database connection string")
-	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
-	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
-	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
-	flag.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to private key file for request decryption")
+	var configPath string
+	fs.StringVar(&configPath, "c", "", "path to JSON config file")
+	fs.StringVar(&configPath, "config", "", "path to JSON config file (alias for -c)")
 
-	flag.Parse()
+	fs.StringVar(&cfg.Address, "a", "localhost:8080", "address and port to run server")
+	fs.IntVar(&cfg.StoreInterval, "i", 300, "store interval in seconds (0 = sync)")
+	fs.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file storage path")
+	fs.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
+	fs.StringVar(&cfg.DatabaseDSN, "d", "", "database connection string")
+	fs.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	fs.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (empty disables file audit)")
+	fs.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events to (empty disables remote audit)")
+	fs.StringVar(&cfg.PprofAddr, "pprof", "", "address for pprof debug endpoint (empty disables)")
+	fs.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to private key file for request decryption")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	set := setFlags(fs)
+
+	var fc serverFileConfig
+	if err := loadConfigFile(resolveConfigPath(configPath), &fc); err != nil {
+		return nil, err
+	}
+	if err := fc.applyTo(cfg, set); err != nil {
+		return nil, err
+	}
 
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
@@ -85,5 +164,5 @@ func NewServerConfig() *ServerConfig {
 		cfg.CryptoKey = v
 	}
 
-	return cfg
+	return cfg, nil
 }

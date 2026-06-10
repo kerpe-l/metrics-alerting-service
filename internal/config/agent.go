@@ -23,19 +23,86 @@ type AgentConfig struct {
 	CryptoKey string
 }
 
-// NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
-// Приоритет: env > flag > default.
+// agentFileConfig — представление JSON-файла конфигурации агента. Поля-указатели,
+// чтобы отличать отсутствующий ключ (nil) от заданного пустого/нулевого значения.
+type agentFileConfig struct {
+	Address        *string `json:"address"`
+	ReportInterval *string `json:"report_interval"`
+	PollInterval   *string `json:"poll_interval"`
+	CryptoKey      *string `json:"crypto_key"`
+	Key            *string `json:"key"`
+	RateLimit      *int    `json:"rate_limit"`
+}
+
+// applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
+// не были заданы явно (set). Так файл важнее дефолта, но слабее флага и env.
+func (fc *agentFileConfig) applyTo(cfg *AgentConfig, set map[string]bool) error {
+	if fc.Address != nil && !set["a"] {
+		cfg.Address = *fc.Address
+	}
+	if fc.ReportInterval != nil && !set["r"] {
+		n, err := parseDurationSeconds(*fc.ReportInterval)
+		if err != nil {
+			return err
+		}
+		cfg.ReportInterval = n
+	}
+	if fc.PollInterval != nil && !set["p"] {
+		n, err := parseDurationSeconds(*fc.PollInterval)
+		if err != nil {
+			return err
+		}
+		cfg.PollInterval = n
+	}
+	if fc.CryptoKey != nil && !set["crypto-key"] {
+		cfg.CryptoKey = *fc.CryptoKey
+	}
+	if fc.Key != nil && !set["k"] {
+		cfg.Key = *fc.Key
+	}
+	if fc.RateLimit != nil && !set["l"] {
+		cfg.RateLimit = *fc.RateLimit
+	}
+	return nil
+}
+
+// NewAgentConfig парсит флаги, JSON-файл и переменные окружения, возвращает
+// конфигурацию агента. Приоритет: env > flag > config-file > default.
 func NewAgentConfig() (*AgentConfig, error) {
+	return parseAgentConfig(os.Args[1:])
+}
+
+// parseAgentConfig разбирает конфигурацию агента из args (без имени программы),
+// env и конфиг-файла. Выделен из NewAgentConfig ради тестируемости.
+func parseAgentConfig(args []string) (*AgentConfig, error) {
 	cfg := &AgentConfig{}
+	// ExitOnError сохраняет прежнее CLI-поведение глобального flag.Parse:
+	// -h и опечатка во флаге печатают usage и завершают процесс без panic.
+	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 
-	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
-	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
-	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
-	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
-	flag.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to public key file for request encryption")
+	var configPath string
+	fs.StringVar(&configPath, "c", "", "path to JSON config file")
+	fs.StringVar(&configPath, "config", "", "path to JSON config file (alias for -c)")
 
-	flag.Parse()
+	fs.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
+	fs.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
+	fs.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
+	fs.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
+	fs.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
+	fs.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to public key file for request encryption")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	set := setFlags(fs)
+
+	var fc agentFileConfig
+	if err := loadConfigFile(resolveConfigPath(configPath), &fc); err != nil {
+		return nil, err
+	}
+	if err := fc.applyTo(cfg, set); err != nil {
+		return nil, err
+	}
 
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v

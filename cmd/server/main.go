@@ -42,7 +42,10 @@ func main() {
 		panic(err)
 	}
 
-	cfg := config.NewServerConfig()
+	cfg, err := config.NewServerConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)
