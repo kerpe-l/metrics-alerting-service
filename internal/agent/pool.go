@@ -52,24 +52,11 @@ func NewPool(sender BatchSender, workers, queueSize int) *Pool {
 	return p
 }
 
-// run — цикл воркера: обрабатывает очередь, а после сигнала done
-// дорабатывает остаток и выходит. Канал jobs не закрывается вовсе —
-// так Submit не может запаниковать отправкой в закрытый канал.
+// run — цикл воркера: вычитывает очередь до её закрытия в Shutdown,
+// тем самым дорабатывая остаток после начала остановки.
 func (p *Pool) run(ctx context.Context, sender BatchSender) {
-	for {
-		select {
-		case metrics := <-p.jobs:
-			sender.Send(ctx, metrics)
-		case <-p.done:
-			for {
-				select {
-				case metrics := <-p.jobs:
-					sender.Send(ctx, metrics)
-				default:
-					return
-				}
-			}
-		}
+	for metrics := range p.jobs {
+		sender.Send(ctx, metrics)
 	}
 }
 
@@ -95,7 +82,10 @@ func (p *Pool) Submit(metrics []model.Metrics) bool {
 // тогда незавершённые отправки обрываются и возвращается ошибка ctx.
 // Повторные вызовы безопасны.
 func (p *Pool) Shutdown(ctx context.Context) error {
-	p.once.Do(func() { close(p.done) })
+	p.once.Do(func() {
+		close(p.done)
+		close(p.jobs)
+	})
 
 	drained := make(chan struct{})
 	go func() {
