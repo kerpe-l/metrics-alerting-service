@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -47,14 +48,11 @@ func main() {
 }
 
 // writePEM кодирует der в PEM-блок типа blockType и пишет в файл с правами perm.
-func writePEM(path, blockType string, der []byte, perm os.FileMode) error {
+func writePEM(path, blockType string, der []byte, perm os.FileMode) (err error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-	if err := pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}); err != nil {
-		return err
-	}
-	return f.Close()
+	defer func() { err = errors.Join(err, f.Close()) }()
+	return pem.Encode(f, &pem.Block{Type: blockType, Bytes: der})
 }
