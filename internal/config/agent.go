@@ -25,12 +25,23 @@ type AgentConfig struct {
 	ShutdownTimeout int
 }
 
+// Имена флагов агента.
+const (
+	agentFlagAddress         = "a"
+	agentFlagReportInterval  = "r"
+	agentFlagPollInterval    = "p"
+	agentFlagKey             = "k"
+	agentFlagRateLimit       = "l"
+	agentFlagCryptoKey       = "crypto-key"
+	agentFlagShutdownTimeout = "shutdown-timeout"
+)
+
 // agentFileConfig — представление JSON-файла конфигурации агента. Поля-указатели,
 // чтобы отличать отсутствующий ключ (nil) от заданного пустого/нулевого значения.
 type agentFileConfig struct {
-	Address        *string `json:"address"`
-	ReportInterval *string `json:"report_interval"`
-	PollInterval   *string `json:"poll_interval"`
+	Address         *string `json:"address"`
+	ReportInterval  *string `json:"report_interval"`
+	PollInterval    *string `json:"poll_interval"`
 	CryptoKey       *string `json:"crypto_key"`
 	Key             *string `json:"key"`
 	RateLimit       *int    `json:"rate_limit"`
@@ -40,33 +51,33 @@ type agentFileConfig struct {
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
 // не были заданы явно (set). Так файл важнее дефолта, но слабее флага и env.
 func (fc *agentFileConfig) applyTo(cfg *AgentConfig, set map[string]bool) error {
-	if fc.Address != nil && !set["a"] {
+	if fc.Address != nil && !set[agentFlagAddress] {
 		cfg.Address = *fc.Address
 	}
-	if fc.ReportInterval != nil && !set["r"] {
+	if fc.ReportInterval != nil && !set[agentFlagReportInterval] {
 		n, err := parseDurationSeconds(*fc.ReportInterval)
 		if err != nil {
 			return err
 		}
 		cfg.ReportInterval = n
 	}
-	if fc.PollInterval != nil && !set["p"] {
+	if fc.PollInterval != nil && !set[agentFlagPollInterval] {
 		n, err := parseDurationSeconds(*fc.PollInterval)
 		if err != nil {
 			return err
 		}
 		cfg.PollInterval = n
 	}
-	if fc.CryptoKey != nil && !set["crypto-key"] {
+	if fc.CryptoKey != nil && !set[agentFlagCryptoKey] {
 		cfg.CryptoKey = *fc.CryptoKey
 	}
-	if fc.Key != nil && !set["k"] {
+	if fc.Key != nil && !set[agentFlagKey] {
 		cfg.Key = *fc.Key
 	}
-	if fc.RateLimit != nil && !set["l"] {
+	if fc.RateLimit != nil && !set[agentFlagRateLimit] {
 		cfg.RateLimit = *fc.RateLimit
 	}
-	if fc.ShutdownTimeout != nil && !set["shutdown-timeout"] {
+	if fc.ShutdownTimeout != nil && !set[agentFlagShutdownTimeout] {
 		n, err := parseDurationSeconds(*fc.ShutdownTimeout)
 		if err != nil {
 			return err
@@ -91,16 +102,16 @@ func parseAgentConfig(args []string) (*AgentConfig, error) {
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 
 	var configPath string
-	fs.StringVar(&configPath, "c", "", "path to JSON config file")
-	fs.StringVar(&configPath, "config", "", "path to JSON config file (alias for -c)")
+	fs.StringVar(&configPath, flagConfig, "", configUsageHint)
+	fs.StringVar(&configPath, flagConfigLong, "", configUsageHint+" (alias for -c)")
 
-	fs.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
-	fs.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
-	fs.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
-	fs.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
-	fs.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
-	fs.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to public key file for request encryption")
-	fs.IntVar(&cfg.ShutdownTimeout, "shutdown-timeout", 5, "graceful shutdown timeout in seconds")
+	fs.StringVar(&cfg.Address, agentFlagAddress, "localhost:8080", "address and port of metrics server")
+	fs.IntVar(&cfg.ReportInterval, agentFlagReportInterval, 10, "report interval in seconds")
+	fs.IntVar(&cfg.PollInterval, agentFlagPollInterval, 2, "poll interval in seconds")
+	fs.StringVar(&cfg.Key, agentFlagKey, "", "key for HMAC-SHA256 signing")
+	fs.IntVar(&cfg.RateLimit, agentFlagRateLimit, 1, "rate limit for concurrent requests")
+	fs.StringVar(&cfg.CryptoKey, agentFlagCryptoKey, "", "path to public key file for request encryption")
+	fs.IntVar(&cfg.ShutdownTimeout, agentFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err

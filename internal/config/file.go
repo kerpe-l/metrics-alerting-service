@@ -4,14 +4,27 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"time"
 )
 
+// Имена флагов пути к конфиг-файлу, общие для сервера и агента.
+const (
+	flagConfig      = "c"
+	flagConfigLong  = "config"
+	configUsageHint = "path to JSON config file"
+)
+
 // resolveConfigPath возвращает путь к конфиг-файлу с учётом приоритета env > flag.
 // flagValue — значение флага -c/-config (пусто, если флаг не задан).
+// Если заданы оба источника и пути различаются, пишет предупреждение в лог:
+// значение флага молча проигрывать env не должно.
 func resolveConfigPath(flagValue string) string {
 	if v, ok := os.LookupEnv("CONFIG"); ok {
+		if flagValue != "" && flagValue != v {
+			log.Printf("конфиг-файл: путь из флага -c/-config (%q) проигнорирован в пользу env CONFIG (%q)", flagValue, v)
+		}
 		return v
 	}
 	return flagValue
