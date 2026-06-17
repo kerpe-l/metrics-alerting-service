@@ -19,20 +19,112 @@ type AgentConfig struct {
 	Key string
 	// RateLimit — максимум одновременных запросов к серверу.
 	RateLimit int
+	// CryptoKey — путь к файлу с публичным ключом (пусто = шифрование отключено).
+	CryptoKey string
+	// ShutdownTimeout — сколько ждать доставки очереди метрик при завершении, сек.
+	ShutdownTimeout int
 }
 
-// NewAgentConfig парсит флаги и переменные окружения, возвращает конфигурацию агента.
-// Приоритет: env > flag > default.
+// Имена флагов агента.
+const (
+	agentFlagAddress         = "a"
+	agentFlagReportInterval  = "r"
+	agentFlagPollInterval    = "p"
+	agentFlagKey             = "k"
+	agentFlagRateLimit       = "l"
+	agentFlagCryptoKey       = "crypto-key"
+	agentFlagShutdownTimeout = "shutdown-timeout"
+)
+
+// agentFileConfig — представление JSON-файла конфигурации агента. Поля-указатели,
+// чтобы отличать отсутствующий ключ (nil) от заданного пустого/нулевого значения.
+type agentFileConfig struct {
+	Address         *string `json:"address"`
+	ReportInterval  *string `json:"report_interval"`
+	PollInterval    *string `json:"poll_interval"`
+	CryptoKey       *string `json:"crypto_key"`
+	Key             *string `json:"key"`
+	RateLimit       *int    `json:"rate_limit"`
+	ShutdownTimeout *string `json:"shutdown_timeout"`
+}
+
+// applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
+// не были заданы явно (set). Так файл важнее дефолта, но слабее флага и env.
+func (fc *agentFileConfig) applyTo(cfg *AgentConfig, set map[string]bool) error {
+	if fc.Address != nil && !set[agentFlagAddress] {
+		cfg.Address = *fc.Address
+	}
+	if fc.ReportInterval != nil && !set[agentFlagReportInterval] {
+		n, err := parseDurationSeconds(*fc.ReportInterval)
+		if err != nil {
+			return err
+		}
+		cfg.ReportInterval = n
+	}
+	if fc.PollInterval != nil && !set[agentFlagPollInterval] {
+		n, err := parseDurationSeconds(*fc.PollInterval)
+		if err != nil {
+			return err
+		}
+		cfg.PollInterval = n
+	}
+	if fc.CryptoKey != nil && !set[agentFlagCryptoKey] {
+		cfg.CryptoKey = *fc.CryptoKey
+	}
+	if fc.Key != nil && !set[agentFlagKey] {
+		cfg.Key = *fc.Key
+	}
+	if fc.RateLimit != nil && !set[agentFlagRateLimit] {
+		cfg.RateLimit = *fc.RateLimit
+	}
+	if fc.ShutdownTimeout != nil && !set[agentFlagShutdownTimeout] {
+		n, err := parseDurationSeconds(*fc.ShutdownTimeout)
+		if err != nil {
+			return err
+		}
+		cfg.ShutdownTimeout = n
+	}
+	return nil
+}
+
+// NewAgentConfig парсит флаги, JSON-файл и переменные окружения, возвращает
+// конфигурацию агента. Приоритет: env > flag > config-file > default.
 func NewAgentConfig() (*AgentConfig, error) {
+	return parseAgentConfig(os.Args[1:])
+}
+
+// parseAgentConfig разбирает конфигурацию агента из args (без имени программы),
+// env и конфиг-файла. Выделен из NewAgentConfig ради тестируемости.
+func parseAgentConfig(args []string) (*AgentConfig, error) {
 	cfg := &AgentConfig{}
+	// ExitOnError сохраняет прежнее CLI-поведение глобального flag.Parse:
+	// -h и опечатка во флаге печатают usage и завершают процесс без panic.
+	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 
-	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port of metrics server")
-	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval in seconds")
-	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval in seconds")
-	flag.StringVar(&cfg.Key, "k", "", "key for HMAC-SHA256 signing")
-	flag.IntVar(&cfg.RateLimit, "l", 1, "rate limit for concurrent requests")
+	var configPath string
+	fs.StringVar(&configPath, flagConfig, "", configUsageHint)
+	fs.StringVar(&configPath, flagConfigLong, "", configUsageHint+" (alias for -c)")
 
-	flag.Parse()
+	fs.StringVar(&cfg.Address, agentFlagAddress, "localhost:8080", "address and port of metrics server")
+	fs.IntVar(&cfg.ReportInterval, agentFlagReportInterval, 10, "report interval in seconds")
+	fs.IntVar(&cfg.PollInterval, agentFlagPollInterval, 2, "poll interval in seconds")
+	fs.StringVar(&cfg.Key, agentFlagKey, "", "key for HMAC-SHA256 signing")
+	fs.IntVar(&cfg.RateLimit, agentFlagRateLimit, 1, "rate limit for concurrent requests")
+	fs.StringVar(&cfg.CryptoKey, agentFlagCryptoKey, "", "path to public key file for request encryption")
+	fs.IntVar(&cfg.ShutdownTimeout, agentFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	set := setFlags(fs)
+
+	var fc agentFileConfig
+	if err := loadConfigFile(resolveConfigPath(configPath), &fc); err != nil {
+		return nil, err
+	}
+	if err := fc.applyTo(cfg, set); err != nil {
+		return nil, err
+	}
 
 	if v, ok := os.LookupEnv("ADDRESS"); ok {
 		cfg.Address = v
@@ -55,6 +147,14 @@ func NewAgentConfig() (*AgentConfig, error) {
 			cfg.RateLimit = n
 		}
 	}
+	if v, ok := os.LookupEnv("CRYPTO_KEY"); ok {
+		cfg.CryptoKey = v
+	}
+	if v, ok := os.LookupEnv("SHUTDOWN_TIMEOUT"); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.ShutdownTimeout = n
+		}
+	}
 
 	if cfg.PollInterval <= 0 {
 		return nil, errors.New("POLL_INTERVAL must be greater than 0")
@@ -64,6 +164,9 @@ func NewAgentConfig() (*AgentConfig, error) {
 	}
 	if cfg.RateLimit <= 0 {
 		return nil, errors.New("RATE_LIMIT must be greater than 0")
+	}
+	if cfg.ShutdownTimeout <= 0 {
+		return nil, errors.New("SHUTDOWN_TIMEOUT must be greater than 0")
 	}
 
 	return cfg, nil

@@ -109,3 +109,26 @@ $ go test -run=^$ -bench=. -benchmem -benchtime=200ms \
 | `BenchmarkMiddleware_CompressJSON` (gzip) | 46145 ns · 821139 B · 40 allocs | 17079 ns · 7546 B · 23 allocs |
 | `BenchmarkCompute` (hmac-sha256) | 578 ns · 656 B · 9 allocs | 443 ns · 160 B · 3 allocs |
 | `BenchmarkMiddleware` (hash) | 2600 ns · 10976 B · 52 allocs | 2304 ns · 9904 B · 39 allocs |
+
+## Шифрование трафика агент→сервер
+
+Тело запросов агента может шифроваться асимметрично. Флаг `-crypto-key` / env `CRYPTO_KEY`:
+у **агента** — путь к публичному ключу, у **сервера** — к приватному. При пустом значении
+шифрование отключено.
+
+Используется гибридная схема (AES-256-GCM + RSA-OAEP) — подробности в
+[`internal/crypto`](internal/crypto/README.md). Порядок обработки на сервере:
+`decrypt → gunzip → verify hash`.
+
+Генерация пары ключей:
+
+```
+go run ./cmd/keygen -priv private.pem -pub public.pem -bits 4096
+```
+
+Запуск:
+
+```
+./server -crypto-key private.pem
+./agent  -crypto-key public.pem
+```

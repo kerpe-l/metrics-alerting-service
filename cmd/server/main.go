@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"net/http"
 	_ "net/http/pprof"
@@ -16,6 +17,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
+	"github.com/kerpe-l/metrics-alerting-service/internal/crypto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
@@ -40,14 +42,17 @@ func main() {
 		panic(err)
 	}
 
-	cfg := config.NewServerConfig()
+	cfg, err := config.NewServerConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	if err := logger.Initialize("info"); err != nil {
 		panic(err)
 	}
 
-	// Контекст, отменяемый по SIGINT/SIGTERM
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Контекст, отменяемый по SIGINT/SIGTERM/SIGQUIT
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	var st repository.Storage
@@ -127,8 +132,20 @@ func main() {
 
 	h := &handler.MetricsHandler{Service: svc, Audit: auditPub}
 
+	// Загружаем приватный ключ для расшифровки запросов, если задан.
+	var privKey *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		privKey, err = crypto.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			logger.Log.Fatal("не удалось загрузить приватный ключ: " + err.Error())
+		}
+		logger.Log.Info("расшифровка запросов включена")
+	}
+
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
+	// Расшифровка снаружи gzip: decrypt → gunzip → verify hash.
+	r.Use(crypto.Middleware(privKey))
 	r.Use(gzip.Middleware)
 	r.Use(hash.Middleware(cfg.Key))
 
@@ -179,8 +196,9 @@ func main() {
 	<-ctx.Done()
 	logger.Log.Info("Получен сигнал завершения, останавливаем сервер...")
 
-	// Даём 5 секунд на завершение текущих запросов
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Даём текущим запросам время на завершение (по умолчанию 5 секунд)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(),
+		time.Duration(cfg.ShutdownTimeout)*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
