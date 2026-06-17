@@ -58,8 +58,14 @@ func main() {
 		logger.Log.Info("шифрование запросов включено")
 	}
 
+	// Определяем свой IP для заголовка X-Real-IP. При ошибке шлём без заголовка.
+	realIP, err := agent.OutboundIP(cfg.Address)
+	if err != nil {
+		logger.Log.Warn("не удалось определить исходящий IP: " + err.Error())
+	}
+
 	collector := agent.NewCollector()
-	sender := agent.NewSender(serverAddr, cfg.Key, pubKey)
+	sender := agent.NewSender(serverAddr, cfg.Key, realIP, pubKey)
 
 	logger.Log.Info("agent started",
 		zap.Duration("poll", pollDuration),
