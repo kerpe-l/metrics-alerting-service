@@ -9,5 +9,6 @@
   "audit_file": "",
   "audit_url": "",
   "pprof_addr": "",
-  "shutdown_timeout": "5s"
+  "shutdown_timeout": "5s",
+  "trusted_subnet": ""
 }

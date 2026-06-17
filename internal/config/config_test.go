@@ -64,6 +64,53 @@ func TestServerConfigPrecedence(t *testing.T) {
 	}
 }
 
+func TestServerTrustedSubnetPrecedence(t *testing.T) {
+	file := `{"trusted_subnet":"10.0.0.0/8"}`
+
+	tests := []struct {
+		name string
+		args []string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "дефолт — пусто",
+			want: "",
+		},
+		{
+			name: "файл перекрывает дефолт",
+			args: []string{"-c", writeTempConfig(t, file)},
+			want: "10.0.0.0/8",
+		},
+		{
+			name: "флаг перекрывает файл",
+			args: []string{"-c", writeTempConfig(t, file), "-t", "192.168.0.0/16"},
+			want: "192.168.0.0/16",
+		},
+		{
+			name: "env перекрывает флаг и файл",
+			args: []string{"-c", writeTempConfig(t, file), "-t", "192.168.0.0/16"},
+			env:  map[string]string{"TRUSTED_SUBNET": "172.16.0.0/12"},
+			want: "172.16.0.0/12",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := parseServerConfig(tc.args)
+			if err != nil {
+				t.Fatalf("parseServerConfig: %v", err)
+			}
+			if cfg.TrustedSubnet != tc.want {
+				t.Errorf("TrustedSubnet = %q, хотим %q", cfg.TrustedSubnet, tc.want)
+			}
+		})
+	}
+}
+
 func TestServerConfigDurationFromFile(t *testing.T) {
 	path := writeTempConfig(t, `{"store_interval":"5s"}`)
 	cfg, err := parseServerConfig([]string{"-c", path})

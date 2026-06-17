@@ -33,6 +33,8 @@ type ServerConfig struct {
 	CryptoKey string
 	// ShutdownTimeout — сколько ждать завершения текущих запросов при остановке, сек.
 	ShutdownTimeout int
+	// TrustedSubnet — доверенная подсеть в нотации CIDR (пусто = проверка IP отключена).
+	TrustedSubnet string
 }
 
 // Имена флагов сервера.
@@ -48,6 +50,7 @@ const (
 	srvFlagPprof           = "pprof"
 	srvFlagCryptoKey       = "crypto-key"
 	srvFlagShutdownTimeout = "shutdown-timeout"
+	srvFlagTrustedSubnet   = "t"
 )
 
 // serverFileConfig — представление JSON-файла конфигурации сервера. Поля-указатели,
@@ -64,6 +67,7 @@ type serverFileConfig struct {
 	AuditURL        *string `json:"audit_url"`
 	PprofAddr       *string `json:"pprof_addr"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -110,6 +114,9 @@ func (fc *serverFileConfig) applyTo(cfg *ServerConfig, set map[string]bool) erro
 		}
 		cfg.ShutdownTimeout = n
 	}
+	if fc.TrustedSubnet != nil && !set[srvFlagTrustedSubnet] {
+		cfg.TrustedSubnet = *fc.TrustedSubnet
+	}
 	return nil
 }
 
@@ -142,6 +149,7 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	fs.StringVar(&cfg.PprofAddr, srvFlagPprof, "", "address for pprof debug endpoint (empty disables)")
 	fs.StringVar(&cfg.CryptoKey, srvFlagCryptoKey, "", "path to private key file for request decryption")
 	fs.IntVar(&cfg.ShutdownTimeout, srvFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
+	fs.StringVar(&cfg.TrustedSubnet, srvFlagTrustedSubnet, "", "trusted subnet in CIDR notation (empty disables IP check)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -194,6 +202,9 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.ShutdownTimeout = n
 		}
+	}
+	if v, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+		cfg.TrustedSubnet = v
 	}
 
 	if cfg.ShutdownTimeout <= 0 {
