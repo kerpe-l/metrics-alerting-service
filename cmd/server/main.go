@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/file"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/pg"
 	"github.com/kerpe-l/metrics-alerting-service/internal/service"
+	"github.com/kerpe-l/metrics-alerting-service/internal/trustedsubnet"
 )
 
 // Сведения о сборке. Подставляются линкером через -ldflags "-X main.buildVersion=...".
@@ -142,8 +144,20 @@ func main() {
 		logger.Log.Info("расшифровка запросов включена")
 	}
 
+	// Разбираем доверенную подсеть, если задана.
+	var trustedNet *net.IPNet
+	if cfg.TrustedSubnet != "" {
+		_, trustedNet, err = net.ParseCIDR(cfg.TrustedSubnet)
+		if err != nil {
+			logger.Log.Fatal("неверный формат TRUSTED_SUBNET: " + err.Error())
+		}
+		logger.Log.Info("проверка доверенной подсети включена: " + cfg.TrustedSubnet)
+	}
+
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
+	// Проверка X-Real-IP до дешифровки: чужой IP отсекаем по открытому заголовку.
+	r.Use(trustedsubnet.Middleware(trustedNet))
 	// Расшифровка снаружи gzip: decrypt → gunzip → verify hash.
 	r.Use(crypto.Middleware(privKey))
 	r.Use(gzip.Middleware)
