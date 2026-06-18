@@ -1,7 +1,13 @@
 # internal/trustedsubnet
 
-Middleware, ограничивающий приём метрик агентами из доверенной подсети (CIDR).
+Ограничивает приём метрик агентами из доверенной подсети (CIDR) по IP, который
+агент передаёт сам. Обслуживает оба транспорта:
 
-`Middleware(subnet *net.IPNet)` сверяет IP из заголовка `X-Real-IP` с подсетью.
+- **HTTP** — `Middleware(subnet *net.IPNet)`, IP из заголовка `X-Real-IP`.
+  Нарушитель → `403 Forbidden`.
+- **gRPC** — `UnaryInterceptor(subnet *net.IPNet)`, IP из метаданных `x-real-ip`
+  (gRPC хранит ключи в нижнем регистре). Нарушитель → `codes.PermissionDenied`.
+
 При `subnet == nil` проверка отключена (прозрачный pass-through). Пустой,
-невалидный или не входящий в подсеть IP отклоняется с `403 Forbidden`.
+невалидный или не входящий в подсеть IP отклоняется. Общая проверка
+(`allowed`) — одна на оба транспорта.
