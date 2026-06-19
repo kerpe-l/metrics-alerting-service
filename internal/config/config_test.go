@@ -111,6 +111,53 @@ func TestServerTrustedSubnetPrecedence(t *testing.T) {
 	}
 }
 
+func TestServerGRPCAddressPrecedence(t *testing.T) {
+	file := `{"grpc_address":"localhost:3200"}`
+
+	tests := []struct {
+		name string
+		args []string
+		env  map[string]string
+		want string
+	}{
+		{
+			name: "дефолт — пусто",
+			want: "",
+		},
+		{
+			name: "файл перекрывает дефолт",
+			args: []string{"-c", writeTempConfig(t, file)},
+			want: "localhost:3200",
+		},
+		{
+			name: "флаг перекрывает файл",
+			args: []string{"-c", writeTempConfig(t, file), "-g", "localhost:3300"},
+			want: "localhost:3300",
+		},
+		{
+			name: "env перекрывает флаг и файл",
+			args: []string{"-c", writeTempConfig(t, file), "-g", "localhost:3300"},
+			env:  map[string]string{"GRPC_ADDRESS": "localhost:3400"},
+			want: "localhost:3400",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := parseServerConfig(tc.args)
+			if err != nil {
+				t.Fatalf("parseServerConfig: %v", err)
+			}
+			if cfg.GRPCAddress != tc.want {
+				t.Errorf("GRPCAddress = %q, хотим %q", cfg.GRPCAddress, tc.want)
+			}
+		})
+	}
+}
+
 func TestServerConfigDurationFromFile(t *testing.T) {
 	path := writeTempConfig(t, `{"store_interval":"5s"}`)
 	cfg, err := parseServerConfig([]string{"-c", path})

@@ -10,5 +10,6 @@
   "audit_url": "",
   "pprof_addr": "",
   "shutdown_timeout": "5s",
-  "trusted_subnet": ""
+  "trusted_subnet": "",
+  "grpc_address": ""
 }

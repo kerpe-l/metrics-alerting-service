@@ -35,6 +35,8 @@ type ServerConfig struct {
 	ShutdownTimeout int
 	// TrustedSubnet — доверенная подсеть в нотации CIDR (пусто = проверка IP отключена).
 	TrustedSubnet string
+	// GRPCAddress — адрес и порт gRPC-сервера (пусто = gRPC отключён).
+	GRPCAddress string
 }
 
 // Имена флагов сервера.
@@ -51,6 +53,7 @@ const (
 	srvFlagCryptoKey       = "crypto-key"
 	srvFlagShutdownTimeout = "shutdown-timeout"
 	srvFlagTrustedSubnet   = "t"
+	srvFlagGRPCAddress     = "g"
 )
 
 // serverFileConfig — представление JSON-файла конфигурации сервера. Поля-указатели,
@@ -68,6 +71,7 @@ type serverFileConfig struct {
 	PprofAddr       *string `json:"pprof_addr"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
 	TrustedSubnet   *string `json:"trusted_subnet"`
+	GRPCAddress     *string `json:"grpc_address"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -117,6 +121,9 @@ func (fc *serverFileConfig) applyTo(cfg *ServerConfig, set map[string]bool) erro
 	if fc.TrustedSubnet != nil && !set[srvFlagTrustedSubnet] {
 		cfg.TrustedSubnet = *fc.TrustedSubnet
 	}
+	if fc.GRPCAddress != nil && !set[srvFlagGRPCAddress] {
+		cfg.GRPCAddress = *fc.GRPCAddress
+	}
 	return nil
 }
 
@@ -150,6 +157,7 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	fs.StringVar(&cfg.CryptoKey, srvFlagCryptoKey, "", "path to private key file for request decryption")
 	fs.IntVar(&cfg.ShutdownTimeout, srvFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
 	fs.StringVar(&cfg.TrustedSubnet, srvFlagTrustedSubnet, "", "trusted subnet in CIDR notation (empty disables IP check)")
+	fs.StringVar(&cfg.GRPCAddress, srvFlagGRPCAddress, "", "address and port for gRPC server (empty disables gRPC)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -205,6 +213,9 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	}
 	if v, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
 		cfg.TrustedSubnet = v
+	}
+	if v, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+		cfg.GRPCAddress = v
 	}
 
 	if cfg.ShutdownTimeout <= 0 {

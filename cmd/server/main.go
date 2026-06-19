@@ -14,16 +14,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
 	"github.com/kerpe-l/metrics-alerting-service/internal/config"
 	"github.com/kerpe-l/metrics-alerting-service/internal/crypto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/database"
+	"github.com/kerpe-l/metrics-alerting-service/internal/grpcserver"
 	"github.com/kerpe-l/metrics-alerting-service/internal/gzip"
 	"github.com/kerpe-l/metrics-alerting-service/internal/handler"
 	"github.com/kerpe-l/metrics-alerting-service/internal/hash"
 	"github.com/kerpe-l/metrics-alerting-service/internal/logger"
+	pb "github.com/kerpe-l/metrics-alerting-service/internal/proto"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/file"
 	"github.com/kerpe-l/metrics-alerting-service/internal/repository/pg"
@@ -189,6 +192,24 @@ func main() {
 
 	logger.Log.Info("Сервер запущен на " + cfg.Address)
 
+	// Опциональный gRPC-сервер на отдельном порту. Проверка доверенной подсети —
+	// тем же trustedNet, что и у HTTP, но через UnaryInterceptor.
+	var grpcSrv *grpc.Server
+	if cfg.GRPCAddress != "" {
+		lis, err := net.Listen("tcp", cfg.GRPCAddress)
+		if err != nil {
+			logger.Log.Fatal("не удалось открыть gRPC-listener: " + err.Error())
+		}
+		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(trustedsubnet.UnaryInterceptor(trustedNet)))
+		pb.RegisterMetricsServer(grpcSrv, grpcserver.New(svc))
+		go func() {
+			if err := grpcSrv.Serve(lis); err != nil {
+				logger.Log.Error("gRPC server: " + err.Error())
+			}
+		}()
+		logger.Log.Info("gRPC сервер запущен на " + cfg.GRPCAddress)
+	}
+
 	// Опциональный pprof debug-сервер на отдельном порту.
 	// Использует DefaultServeMux, в который регистрируются хендлеры из net/http/pprof.
 	var pprofSrv *http.Server
@@ -222,6 +243,21 @@ func main() {
 		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
 			logger.Log.Error("Ошибка при остановке pprof: " + err.Error())
 		}
+	}
+	if grpcSrv != nil {
+		// GracefulStop дожидается текущих RPC; при истечении таймаута обрываем
+		// принудительно через Stop, чтобы уложиться в ShutdownTimeout.
+		stopped := make(chan struct{})
+		go func() {
+			grpcSrv.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-shutdownCtx.Done():
+			grpcSrv.Stop()
+		}
+		logger.Log.Info("gRPC сервер остановлен")
 	}
 
 	if onShutdown != nil {
