@@ -5,5 +5,6 @@
   "crypto_key": "",
   "key": "",
   "rate_limit": 1,
-  "shutdown_timeout": "5s"
+  "shutdown_timeout": "5s",
+  "grpc_address": ""
 }

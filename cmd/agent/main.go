@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
@@ -58,21 +60,47 @@ func main() {
 		logger.Log.Info("шифрование запросов включено")
 	}
 
-	// Определяем свой IP для заголовка X-Real-IP. При ошибке шлём без заголовка.
-	realIP, err := agent.OutboundIP(cfg.Address)
+	// Способ отправки выбирается по наличию gRPC-адреса; от него же зависит,
+	// к какому узлу определять свой исходящий IP.
+	ipTarget := cfg.Address
+	if cfg.GRPCAddress != "" {
+		ipTarget = cfg.GRPCAddress
+	}
+
+	// Определяем свой IP для передачи серверу. При ошибке шлём без него.
+	realIP, err := agent.OutboundIP(ipTarget)
 	if err != nil {
 		logger.Log.Warn("не удалось определить исходящий IP: " + err.Error())
 	}
 
 	collector := agent.NewCollector()
-	sender := agent.NewSender(serverAddr, cfg.Key, realIP, pubKey)
 
-	logger.Log.Info("agent started",
-		zap.Duration("poll", pollDuration),
-		zap.Duration("report", reportDuration),
-		zap.String("server", serverAddr),
-		zap.Int("rateLimit", cfg.RateLimit),
-	)
+	// Способ отправки: gRPC при заданном адресе, иначе HTTP.
+	var sender agent.BatchSender
+	if cfg.GRPCAddress != "" {
+		conn, dialErr := grpc.NewClient(cfg.GRPCAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if dialErr != nil {
+			logger.Log.Fatal("не удалось создать gRPC-клиент: " + dialErr.Error())
+		}
+		defer func() { _ = conn.Close() }()
+		sender = agent.NewGRPCSender(conn, realIP)
+		logger.Log.Info("agent started",
+			zap.Duration("poll", pollDuration),
+			zap.Duration("report", reportDuration),
+			zap.String("transport", "grpc"),
+			zap.String("server", cfg.GRPCAddress),
+			zap.Int("rateLimit", cfg.RateLimit),
+		)
+	} else {
+		sender = agent.NewSender(serverAddr, cfg.Key, realIP, pubKey)
+		logger.Log.Info("agent started",
+			zap.Duration("poll", pollDuration),
+			zap.Duration("report", reportDuration),
+			zap.String("transport", "http"),
+			zap.String("server", serverAddr),
+			zap.Int("rateLimit", cfg.RateLimit),
+		)
+	}
 
 	// Worker pool: ограничивает количество одновременных исходящих запросов
 	// и дорабатывает очередь при штатном завершении.

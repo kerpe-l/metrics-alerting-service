@@ -23,6 +23,8 @@ type AgentConfig struct {
 	CryptoKey string
 	// ShutdownTimeout — сколько ждать доставки очереди метрик при завершении, сек.
 	ShutdownTimeout int
+	// GRPCAddress — адрес gRPC-сервера (пусто = отправка по HTTP).
+	GRPCAddress string
 }
 
 // Имена флагов агента.
@@ -34,6 +36,7 @@ const (
 	agentFlagRateLimit       = "l"
 	agentFlagCryptoKey       = "crypto-key"
 	agentFlagShutdownTimeout = "shutdown-timeout"
+	agentFlagGRPCAddress     = "g"
 )
 
 // agentFileConfig — представление JSON-файла конфигурации агента. Поля-указатели,
@@ -46,6 +49,7 @@ type agentFileConfig struct {
 	Key             *string `json:"key"`
 	RateLimit       *int    `json:"rate_limit"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
+	GRPCAddress     *string `json:"grpc_address"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -84,6 +88,9 @@ func (fc *agentFileConfig) applyTo(cfg *AgentConfig, set map[string]bool) error 
 		}
 		cfg.ShutdownTimeout = n
 	}
+	if fc.GRPCAddress != nil && !set[agentFlagGRPCAddress] {
+		cfg.GRPCAddress = *fc.GRPCAddress
+	}
 	return nil
 }
 
@@ -112,6 +119,7 @@ func parseAgentConfig(args []string) (*AgentConfig, error) {
 	fs.IntVar(&cfg.RateLimit, agentFlagRateLimit, 1, "rate limit for concurrent requests")
 	fs.StringVar(&cfg.CryptoKey, agentFlagCryptoKey, "", "path to public key file for request encryption")
 	fs.IntVar(&cfg.ShutdownTimeout, agentFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
+	fs.StringVar(&cfg.GRPCAddress, agentFlagGRPCAddress, "", "gRPC server address (empty sends over HTTP)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -154,6 +162,9 @@ func parseAgentConfig(args []string) (*AgentConfig, error) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.ShutdownTimeout = n
 		}
+	}
+	if v, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+		cfg.GRPCAddress = v
 	}
 
 	if cfg.PollInterval <= 0 {
