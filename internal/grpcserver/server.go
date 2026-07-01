@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -78,7 +79,9 @@ func toModel(m *pb.Metric) (model.Metrics, error) {
 }
 
 // mapError маппит доменные ошибки на коды gRPC. Единая точка маппинга:
-// ошибки валидации → InvalidArgument, прочее → Internal (с логом).
+// ошибки валидации → InvalidArgument (с текстом), прочее → Internal.
+// Для Internal клиенту отдаётся только общее сообщение: детали (пути, имена
+// таблиц, внутренние адреса) не должны утекать наружу — они уходят в лог.
 func mapError(err error) error {
 	switch {
 	case errors.Is(err, errUnknownType),
@@ -89,7 +92,7 @@ func mapError(err error) error {
 		errors.Is(err, service.ErrMissingDelta):
 		return status.Error(codes.InvalidArgument, err.Error())
 	default:
-		logger.Log.Error("grpc UpdateMetrics: " + err.Error())
-		return status.Error(codes.Internal, err.Error())
+		logger.Log.Error("grpc UpdateMetrics", zap.Error(err))
+		return status.Error(codes.Internal, "internal error")
 	}
 }
