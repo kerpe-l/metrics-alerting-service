@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -67,12 +68,12 @@ func main() {
 	if cfg.DatabaseDSN != "" {
 		// Режим БД
 		if err := database.RunMigrations(cfg.DatabaseDSN); err != nil {
-			logger.Log.Fatal("Ошибка миграции БД: " + err.Error())
+			logger.Log.Fatal("Ошибка миграции БД", zap.Error(err))
 		}
 
 		pool, err := pgxpool.New(context.Background(), cfg.DatabaseDSN)
 		if err != nil {
-			logger.Log.Fatal("Не удалось подключиться к БД: " + err.Error())
+			logger.Log.Fatal("Не удалось подключиться к БД", zap.Error(err))
 		}
 		defer pool.Close()
 
@@ -85,9 +86,9 @@ func main() {
 		// Восстанавливаем метрики из файла при старте, если задано
 		if cfg.Restore && cfg.FileStoragePath != "" {
 			if err := file.Load(context.Background(), cfg.FileStoragePath, storage); err != nil {
-				logger.Log.Error("Не удалось загрузить метрики из файла: " + err.Error())
+				logger.Log.Error("Не удалось загрузить метрики из файла", zap.Error(err))
 			} else {
-				logger.Log.Info("Метрики загружены из файла " + cfg.FileStoragePath)
+				logger.Log.Info("Метрики загружены из файла", zap.String("path", cfg.FileStoragePath))
 			}
 		}
 
@@ -100,7 +101,7 @@ func main() {
 					select {
 					case <-ticker.C:
 						if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
-							logger.Log.Error("Ошибка сохранения метрик: " + err.Error())
+							logger.Log.Error("Ошибка сохранения метрик", zap.Error(err))
 						}
 					case <-ctx.Done():
 						return
@@ -120,9 +121,9 @@ func main() {
 		if cfg.FileStoragePath != "" {
 			onShutdown = func() {
 				if err := file.Save(context.Background(), cfg.FileStoragePath, storage); err != nil {
-					logger.Log.Error("Ошибка сохранения метрик при завершении: " + err.Error())
+					logger.Log.Error("Ошибка сохранения метрик при завершении", zap.Error(err))
 				} else {
-					logger.Log.Info("Метрики сохранены в файл " + cfg.FileStoragePath)
+					logger.Log.Info("Метрики сохранены в файл", zap.String("path", cfg.FileStoragePath))
 				}
 			}
 		}
@@ -133,7 +134,7 @@ func main() {
 	// Аудит: создаём Publisher, если задан хотя бы один приёмник.
 	auditPub, err := setupAudit(cfg)
 	if err != nil {
-		logger.Log.Fatal("Не удалось настроить аудит: " + err.Error())
+		logger.Log.Fatal("Не удалось настроить аудит", zap.Error(err))
 	}
 
 	h := &handler.MetricsHandler{Service: svc, Audit: auditPub}
@@ -143,7 +144,7 @@ func main() {
 	if cfg.CryptoKey != "" {
 		privKey, err = crypto.LoadPrivateKey(cfg.CryptoKey)
 		if err != nil {
-			logger.Log.Fatal("не удалось загрузить приватный ключ: " + err.Error())
+			logger.Log.Fatal("не удалось загрузить приватный ключ", zap.Error(err))
 		}
 		logger.Log.Info("расшифровка запросов включена")
 	}
@@ -153,9 +154,9 @@ func main() {
 	if cfg.TrustedSubnet != "" {
 		_, trustedNet, err = net.ParseCIDR(cfg.TrustedSubnet)
 		if err != nil {
-			logger.Log.Fatal("неверный формат TRUSTED_SUBNET: " + err.Error())
+			logger.Log.Fatal("неверный формат TRUSTED_SUBNET", zap.Error(err))
 		}
-		logger.Log.Info("проверка доверенной подсети включена: " + cfg.TrustedSubnet)
+		logger.Log.Info("проверка доверенной подсети включена", zap.String("subnet", cfg.TrustedSubnet))
 	}
 
 	r := chi.NewRouter()
@@ -187,11 +188,11 @@ func main() {
 	// Запускаем сервер в горутине
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Log.Fatal(err.Error())
+			logger.Log.Fatal("ошибка HTTP-сервера", zap.Error(err))
 		}
 	}()
 
-	logger.Log.Info("Сервер запущен на " + cfg.Address)
+	logger.Log.Info("Сервер запущен", zap.String("address", cfg.Address))
 
 	// Опциональный gRPC-сервер на отдельном порту. Проверка доверенной подсети —
 	// тем же trustedNet, что и у HTTP, но через UnaryInterceptor.
@@ -203,11 +204,11 @@ func main() {
 		}
 		creds, err := credentials.NewServerTLSFromFile(cfg.GRPCCertFile, cfg.GRPCKeyFile)
 		if err != nil {
-			logger.Log.Fatal("не удалось загрузить TLS для gRPC: " + err.Error())
+			logger.Log.Fatal("не удалось загрузить TLS для gRPC", zap.Error(err))
 		}
 		lis, err := net.Listen("tcp", cfg.GRPCAddress)
 		if err != nil {
-			logger.Log.Fatal("не удалось открыть gRPC-listener: " + err.Error())
+			logger.Log.Fatal("не удалось открыть gRPC-listener", zap.Error(err))
 		}
 		grpcSrv = grpc.NewServer(
 			grpc.Creds(creds),
@@ -216,10 +217,10 @@ func main() {
 		pb.RegisterMetricsServer(grpcSrv, grpcserver.New(svc))
 		go func() {
 			if err := grpcSrv.Serve(lis); err != nil {
-				logger.Log.Error("gRPC server: " + err.Error())
+				logger.Log.Error("ошибка gRPC-сервера", zap.Error(err))
 			}
 		}()
-		logger.Log.Info("gRPC сервер запущен на " + cfg.GRPCAddress)
+		logger.Log.Info("gRPC сервер запущен", zap.String("address", cfg.GRPCAddress))
 	}
 
 	// Опциональный pprof debug-сервер на отдельном порту.
@@ -233,10 +234,10 @@ func main() {
 		}
 		go func() {
 			if err := pprofSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Log.Error("pprof server: " + err.Error())
+				logger.Log.Error("ошибка pprof-сервера", zap.Error(err))
 			}
 		}()
-		logger.Log.Info("pprof доступен на " + cfg.PprofAddr + "/debug/pprof/")
+		logger.Log.Info("pprof доступен", zap.String("address", cfg.PprofAddr+"/debug/pprof/"))
 	}
 
 	// Ждём сигнал завершения
@@ -249,11 +250,11 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Log.Error("Ошибка при остановке сервера: " + err.Error())
+		logger.Log.Error("Ошибка при остановке сервера", zap.Error(err))
 	}
 	if pprofSrv != nil {
 		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
-			logger.Log.Error("Ошибка при остановке pprof: " + err.Error())
+			logger.Log.Error("Ошибка при остановке pprof", zap.Error(err))
 		}
 	}
 	if grpcSrv != nil {
@@ -279,7 +280,7 @@ func main() {
 	// Дожидаемся доставки событий аудита; Publisher сам закрывает приёмники.
 	if auditPub != nil {
 		if err := auditPub.Close(shutdownCtx); err != nil {
-			logger.Log.Error("Ошибка завершения аудита: " + err.Error())
+			logger.Log.Error("Ошибка завершения аудита", zap.Error(err))
 		}
 	}
 
@@ -301,11 +302,11 @@ func setupAudit(cfg *config.ServerConfig) (*audit.Publisher, error) {
 			return nil, err
 		}
 		observers = append(observers, fs)
-		logger.Log.Info("Аудит: файл " + cfg.AuditFile)
+		logger.Log.Info("Аудит: файл", zap.String("path", cfg.AuditFile))
 	}
 	if cfg.AuditURL != "" {
 		observers = append(observers, audit.NewHTTPSink(cfg.AuditURL))
-		logger.Log.Info("Аудит: URL " + cfg.AuditURL)
+		logger.Log.Info("Аудит: URL", zap.String("url", cfg.AuditURL))
 	}
 
 	return audit.NewPublisher(observers...), nil

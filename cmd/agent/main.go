@@ -55,7 +55,7 @@ func main() {
 	if cfg.CryptoKey != "" {
 		pubKey, err = crypto.LoadPublicKey(cfg.CryptoKey)
 		if err != nil {
-			logger.Log.Fatal("не удалось загрузить публичный ключ: " + err.Error())
+			logger.Log.Fatal("не удалось загрузить публичный ключ", zap.Error(err))
 		}
 		logger.Log.Info("шифрование запросов включено")
 	}
@@ -70,7 +70,7 @@ func main() {
 	// Определяем свой IP для передачи серверу. При ошибке шлём без него.
 	realIP, err := agent.OutboundIP(ipTarget)
 	if err != nil {
-		logger.Log.Warn("не удалось определить исходящий IP: " + err.Error())
+		logger.Log.Warn("не удалось определить исходящий IP", zap.Error(err))
 	}
 
 	collector := agent.NewCollector()
@@ -84,11 +84,11 @@ func main() {
 		}
 		creds, credErr := credentials.NewClientTLSFromFile(cfg.GRPCCACert, "")
 		if credErr != nil {
-			logger.Log.Fatal("не удалось загрузить CA для gRPC: " + credErr.Error())
+			logger.Log.Fatal("не удалось загрузить CA для gRPC", zap.Error(credErr))
 		}
 		conn, dialErr := grpc.NewClient(cfg.GRPCAddress, grpc.WithTransportCredentials(creds))
 		if dialErr != nil {
-			logger.Log.Fatal("не удалось создать gRPC-клиент: " + dialErr.Error())
+			logger.Log.Fatal("не удалось создать gRPC-клиент", zap.Error(dialErr))
 		}
 		defer func() { _ = conn.Close() }()
 		sender = agent.NewGRPCSender(conn, realIP)
@@ -166,7 +166,7 @@ func main() {
 				time.Duration(cfg.ShutdownTimeout)*time.Second)
 			defer cancel()
 			if err := pool.Shutdown(shutdownCtx); err != nil {
-				logger.Log.Error("Не все метрики доставлены при завершении: " + err.Error())
+				logger.Log.Error("Не все метрики доставлены при завершении", zap.Error(err))
 			}
 
 			logger.Log.Info("Агент остановлен")
