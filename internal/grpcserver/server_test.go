@@ -40,12 +40,12 @@ func TestServer_UpdateMetrics_Conversion(t *testing.T) {
 	}{
 		{
 			name: "gauge",
-			in:   &pb.Metric{Id: "Alloc", Type: pb.Metric_GAUGE, Value: 42.5},
+			in:   (&pb.Metric_builder{Id: "Alloc", Type: pb.Metric_GAUGE, Value: 42.5}).Build(),
 			want: model.Metrics{ID: "Alloc", MType: model.Gauge, Value: ptrFloat(42.5)},
 		},
 		{
 			name: "counter",
-			in:   &pb.Metric{Id: "PollCount", Type: pb.Metric_COUNTER, Delta: 7},
+			in:   (&pb.Metric_builder{Id: "PollCount", Type: pb.Metric_COUNTER, Delta: 7}).Build(),
 			want: model.Metrics{ID: "PollCount", MType: model.Counter, Delta: ptrInt(7)},
 		},
 	}
@@ -54,9 +54,8 @@ func TestServer_UpdateMetrics_Conversion(t *testing.T) {
 			fake := &fakeUpdater{}
 			srv := New(fake)
 
-			_, err := srv.UpdateMetrics(context.Background(), &pb.UpdateMetricsRequest{
-				Metrics: []*pb.Metric{tc.in},
-			})
+			_, err := srv.UpdateMetrics(context.Background(),
+				(&pb.UpdateMetricsRequest_builder{Metrics: []*pb.Metric{tc.in}}).Build())
 			require.NoError(t, err)
 			require.Len(t, fake.received, 1)
 			assert.Equal(t, tc.want, fake.received[0])
@@ -74,20 +73,20 @@ func TestServer_UpdateMetrics_Errors(t *testing.T) {
 	}{
 		{
 			name:       "unknown type rejected before delegating",
-			req:        &pb.UpdateMetricsRequest{Metrics: []*pb.Metric{{Id: "x", Type: pb.Metric_MType(99)}}},
+			req:        (&pb.UpdateMetricsRequest_builder{Metrics: []*pb.Metric{(&pb.Metric_builder{Id: "x", Type: pb.Metric_MType(99)}).Build()}}).Build(),
 			wantCode:   codes.InvalidArgument,
 			wantCalled: false,
 		},
 		{
 			name:       "empty batch maps to InvalidArgument",
-			req:        &pb.UpdateMetricsRequest{},
+			req:        (&pb.UpdateMetricsRequest_builder{}).Build(),
 			svcErr:     service.ErrEmptyBatch,
 			wantCode:   codes.InvalidArgument,
 			wantCalled: true,
 		},
 		{
 			name:       "service failure maps to Internal",
-			req:        &pb.UpdateMetricsRequest{Metrics: []*pb.Metric{{Id: "x", Type: pb.Metric_GAUGE}}},
+			req:        (&pb.UpdateMetricsRequest_builder{Metrics: []*pb.Metric{(&pb.Metric_builder{Id: "x", Type: pb.Metric_GAUGE}).Build()}}).Build(),
 			svcErr:     errors.New("db down"),
 			wantCode:   codes.Internal,
 			wantCalled: true,

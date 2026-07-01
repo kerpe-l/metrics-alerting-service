@@ -42,7 +42,7 @@ func (s *GRPCSender) Send(ctx context.Context, metrics []model.Metrics) {
 		return
 	}
 
-	req := &pb.UpdateMetricsRequest{Metrics: toProto(metrics)}
+	req := (&pb.UpdateMetricsRequest_builder{Metrics: toProto(metrics)}).Build()
 
 	if s.realIP != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, metadataKeyRealIP, s.realIP)
@@ -58,24 +58,25 @@ func (s *GRPCSender) Send(ctx context.Context, metrics []model.Metrics) {
 }
 
 // toProto конвертирует доменные метрики в proto-представление. Значение берётся
-// по типу: value для gauge, delta для counter.
+// по типу: value для gauge, delta для counter. Сборка через Opaque-билдер —
+// прямого доступа к полям proto-структур нет.
 func toProto(metrics []model.Metrics) []*pb.Metric {
 	out := make([]*pb.Metric, 0, len(metrics))
 	for _, m := range metrics {
-		pm := &pb.Metric{Id: m.ID}
+		b := pb.Metric_builder{Id: m.ID}
 		switch m.MType {
 		case model.Gauge:
-			pm.Type = pb.Metric_GAUGE
+			b.Type = pb.Metric_GAUGE
 			if m.Value != nil {
-				pm.Value = *m.Value
+				b.Value = *m.Value
 			}
 		case model.Counter:
-			pm.Type = pb.Metric_COUNTER
+			b.Type = pb.Metric_COUNTER
 			if m.Delta != nil {
-				pm.Delta = *m.Delta
+				b.Delta = *m.Delta
 			}
 		}
-		out = append(out, pm)
+		out = append(out, b.Build())
 	}
 	return out
 }
