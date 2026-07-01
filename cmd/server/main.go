@@ -162,7 +162,10 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(logger.RequestLogger)
 	// Проверка X-Real-IP до дешифровки: чужой IP отсекаем по открытому заголовку.
-	r.Use(trustedsubnet.Middleware(trustedNet))
+	// Слой регистрируем только если подсеть задана — иначе он не нужен.
+	if trustedNet != nil {
+		r.Use(trustedsubnet.Middleware(trustedNet))
+	}
 	// Расшифровка снаружи gzip: decrypt → gunzip → verify hash.
 	r.Use(crypto.Middleware(privKey))
 	r.Use(gzip.Middleware)
@@ -210,10 +213,12 @@ func main() {
 		if err != nil {
 			logger.Log.Fatal("не удалось открыть gRPC-listener", zap.Error(err))
 		}
-		grpcSrv = grpc.NewServer(
-			grpc.Creds(creds),
-			grpc.ChainUnaryInterceptor(trustedsubnet.UnaryInterceptor(trustedNet)),
-		)
+		// Interceptor подсети добавляем только если подсеть задана.
+		opts := []grpc.ServerOption{grpc.Creds(creds)}
+		if trustedNet != nil {
+			opts = append(opts, grpc.ChainUnaryInterceptor(trustedsubnet.UnaryInterceptor(trustedNet)))
+		}
+		grpcSrv = grpc.NewServer(opts...)
 		pb.RegisterMetricsServer(grpcSrv, grpcserver.New(svc))
 		go func() {
 			if err := grpcSrv.Serve(lis); err != nil {
