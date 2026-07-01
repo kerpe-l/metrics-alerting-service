@@ -39,6 +39,7 @@ go build -ldflags "\
 | `--crypto-key` | `CRYPTO_KEY` | `""` | Путь к публичному ключу для шифрования тела запросов |
 | `--shutdown-timeout` | `SHUTDOWN_TIMEOUT` | `5` | Сколько ждать доставки очереди метрик при завершении (сек) |
 | `-g` | `GRPC_ADDRESS` | `""` | Адрес gRPC-сервера. Задан — метрики шлются по gRPC, пусто — по HTTP |
+| `--grpc-ca` | `GRPC_CA_CERT` | `""` | Путь к CA-сертификату для проверки gRPC-сервера по TLS. Обязателен при заданном `-g` |
 | `-c` / `--config` | `CONFIG` | `""` | Путь к JSON-файлу конфигурации |
 
 Приоритет источников: переменная окружения важнее флага, флаг важнее значения из
@@ -59,7 +60,8 @@ go build -ldflags "\
   "key": "",
   "rate_limit": 1,
   "shutdown_timeout": "5s",
-  "grpc_address": ""
+  "grpc_address": "",
+  "grpc_ca_cert": ""
 }
 ```
 
@@ -113,12 +115,17 @@ ADDRESS=my-server:8080 POLL_INTERVAL=1 REPORT_INTERVAL=5 ./agent
 
 По умолчанию агент шлёт метрики по HTTP. Если задан `-g` / `GRPC_ADDRESS`, отправка идёт по gRPC (метод `Metrics.UpdateMetrics`, метрики батчем). HTTP-специфичная обвязка (gzip, шифрование, HMAC-подпись) на gRPC не применяется.
 
-```bash
-# сервер с gRPC на :3200
-./server -g :3200
+Отправка **всегда по TLS**: агент проверяет сертификат сервера по CA из `--grpc-ca` / `GRPC_CA_CERT` (без него агент завершается с ошибкой). Самоподписанные CA и серверный сертификат генерирует [cmd/certgen](../certgen/README.md).
 
-# агент шлёт по gRPC
-./agent -g localhost:3200
+```bash
+# генерация CA + серверного сертификата (SAN по умолчанию: localhost, 127.0.0.1)
+go run ./cmd/certgen -ca ca.crt -cert server.crt -key server.key
+
+# сервер с gRPC на :3200 по TLS
+./server -g :3200 --grpc-cert server.crt --grpc-key server.key
+
+# агент шлёт по gRPC, проверяя сервер по CA
+./agent -g localhost:3200 --grpc-ca ca.crt
 ```
 
 ## Совместный запуск с сервером

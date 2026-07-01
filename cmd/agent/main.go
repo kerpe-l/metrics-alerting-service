@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
@@ -78,7 +78,15 @@ func main() {
 	// Способ отправки: gRPC при заданном адресе, иначе HTTP.
 	var sender agent.BatchSender
 	if cfg.GRPCAddress != "" {
-		conn, dialErr := grpc.NewClient(cfg.GRPCAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		// TLS обязателен: сервер проверяется по CA, переданному через -grpc-ca.
+		if cfg.GRPCCACert == "" {
+			logger.Log.Fatal("gRPC требует TLS: не задан GRPC_CA_CERT (CA-сертификат сервера)")
+		}
+		creds, credErr := credentials.NewClientTLSFromFile(cfg.GRPCCACert, "")
+		if credErr != nil {
+			logger.Log.Fatal("не удалось загрузить CA для gRPC: " + credErr.Error())
+		}
+		conn, dialErr := grpc.NewClient(cfg.GRPCAddress, grpc.WithTransportCredentials(creds))
 		if dialErr != nil {
 			logger.Log.Fatal("не удалось создать gRPC-клиент: " + dialErr.Error())
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/audit"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
@@ -196,11 +197,22 @@ func main() {
 	// тем же trustedNet, что и у HTTP, но через UnaryInterceptor.
 	var grpcSrv *grpc.Server
 	if cfg.GRPCAddress != "" {
+		// gRPC поднимаем только по TLS: без cert/key транспорт был бы открытым.
+		if cfg.GRPCCertFile == "" || cfg.GRPCKeyFile == "" {
+			logger.Log.Fatal("gRPC требует TLS: заданы не оба GRPC_CERT_FILE и GRPC_KEY_FILE")
+		}
+		creds, err := credentials.NewServerTLSFromFile(cfg.GRPCCertFile, cfg.GRPCKeyFile)
+		if err != nil {
+			logger.Log.Fatal("не удалось загрузить TLS для gRPC: " + err.Error())
+		}
 		lis, err := net.Listen("tcp", cfg.GRPCAddress)
 		if err != nil {
 			logger.Log.Fatal("не удалось открыть gRPC-listener: " + err.Error())
 		}
-		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(trustedsubnet.UnaryInterceptor(trustedNet)))
+		grpcSrv = grpc.NewServer(
+			grpc.Creds(creds),
+			grpc.ChainUnaryInterceptor(trustedsubnet.UnaryInterceptor(trustedNet)),
+		)
 		pb.RegisterMetricsServer(grpcSrv, grpcserver.New(svc))
 		go func() {
 			if err := grpcSrv.Serve(lis); err != nil {

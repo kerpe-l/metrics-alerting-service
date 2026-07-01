@@ -25,6 +25,8 @@ type AgentConfig struct {
 	ShutdownTimeout int
 	// GRPCAddress — адрес gRPC-сервера (пусто = отправка по HTTP).
 	GRPCAddress string
+	// GRPCCACert — путь к CA-сертификату для проверки gRPC-сервера по TLS.
+	GRPCCACert string
 }
 
 // Имена флагов агента.
@@ -37,6 +39,7 @@ const (
 	agentFlagCryptoKey       = "crypto-key"
 	agentFlagShutdownTimeout = "shutdown-timeout"
 	agentFlagGRPCAddress     = "g"
+	agentFlagGRPCCACert      = "grpc-ca"
 )
 
 // agentFileConfig — представление JSON-файла конфигурации агента. Поля-указатели,
@@ -50,6 +53,7 @@ type agentFileConfig struct {
 	RateLimit       *int    `json:"rate_limit"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
 	GRPCAddress     *string `json:"grpc_address"`
+	GRPCCACert      *string `json:"grpc_ca_cert"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -91,6 +95,9 @@ func (fc *agentFileConfig) applyTo(cfg *AgentConfig, set map[string]bool) error 
 	if fc.GRPCAddress != nil && !set[agentFlagGRPCAddress] {
 		cfg.GRPCAddress = *fc.GRPCAddress
 	}
+	if fc.GRPCCACert != nil && !set[agentFlagGRPCCACert] {
+		cfg.GRPCCACert = *fc.GRPCCACert
+	}
 	return nil
 }
 
@@ -120,6 +127,7 @@ func parseAgentConfig(args []string) (*AgentConfig, error) {
 	fs.StringVar(&cfg.CryptoKey, agentFlagCryptoKey, "", "path to public key file for request encryption")
 	fs.IntVar(&cfg.ShutdownTimeout, agentFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
 	fs.StringVar(&cfg.GRPCAddress, agentFlagGRPCAddress, "", "gRPC server address (empty sends over HTTP)")
+	fs.StringVar(&cfg.GRPCCACert, agentFlagGRPCCACert, "", "path to CA certificate for gRPC server verification")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -165,6 +173,9 @@ func parseAgentConfig(args []string) (*AgentConfig, error) {
 	}
 	if v, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
 		cfg.GRPCAddress = v
+	}
+	if v, ok := os.LookupEnv("GRPC_CA_CERT"); ok {
+		cfg.GRPCCACert = v
 	}
 
 	if cfg.PollInterval <= 0 {
