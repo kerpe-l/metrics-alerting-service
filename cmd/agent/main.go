@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/kerpe-l/metrics-alerting-service/internal/agent"
 	"github.com/kerpe-l/metrics-alerting-service/internal/buildinfo"
@@ -53,20 +55,60 @@ func main() {
 	if cfg.CryptoKey != "" {
 		pubKey, err = crypto.LoadPublicKey(cfg.CryptoKey)
 		if err != nil {
-			logger.Log.Fatal("не удалось загрузить публичный ключ: " + err.Error())
+			logger.Log.Fatal("не удалось загрузить публичный ключ", zap.Error(err))
 		}
 		logger.Log.Info("шифрование запросов включено")
 	}
 
-	collector := agent.NewCollector()
-	sender := agent.NewSender(serverAddr, cfg.Key, pubKey)
+	// Способ отправки выбирается по наличию gRPC-адреса; от него же зависит,
+	// к какому узлу определять свой исходящий IP.
+	ipTarget := cfg.Address
+	if cfg.GRPCAddress != "" {
+		ipTarget = cfg.GRPCAddress
+	}
 
-	logger.Log.Info("agent started",
-		zap.Duration("poll", pollDuration),
-		zap.Duration("report", reportDuration),
-		zap.String("server", serverAddr),
-		zap.Int("rateLimit", cfg.RateLimit),
-	)
+	// Определяем свой IP для передачи серверу. При ошибке шлём без него.
+	realIP, err := agent.OutboundIP(ipTarget)
+	if err != nil {
+		logger.Log.Warn("не удалось определить исходящий IP", zap.Error(err))
+	}
+
+	collector := agent.NewCollector()
+
+	// Способ отправки: gRPC при заданном адресе, иначе HTTP.
+	var sender agent.BatchSender
+	if cfg.GRPCAddress != "" {
+		// TLS обязателен: сервер проверяется по CA, переданному через -grpc-ca.
+		if cfg.GRPCCACert == "" {
+			logger.Log.Fatal("gRPC требует TLS: не задан GRPC_CA_CERT (CA-сертификат сервера)")
+		}
+		creds, credErr := credentials.NewClientTLSFromFile(cfg.GRPCCACert, "")
+		if credErr != nil {
+			logger.Log.Fatal("не удалось загрузить CA для gRPC", zap.Error(credErr))
+		}
+		conn, dialErr := grpc.NewClient(cfg.GRPCAddress, grpc.WithTransportCredentials(creds))
+		if dialErr != nil {
+			logger.Log.Fatal("не удалось создать gRPC-клиент", zap.Error(dialErr))
+		}
+		defer func() { _ = conn.Close() }()
+		sender = agent.NewGRPCSender(conn, realIP)
+		logger.Log.Info("agent started",
+			zap.Duration("poll", pollDuration),
+			zap.Duration("report", reportDuration),
+			zap.String("transport", "grpc"),
+			zap.String("server", cfg.GRPCAddress),
+			zap.Int("rateLimit", cfg.RateLimit),
+		)
+	} else {
+		sender = agent.NewSender(serverAddr, cfg.Key, realIP, pubKey)
+		logger.Log.Info("agent started",
+			zap.Duration("poll", pollDuration),
+			zap.Duration("report", reportDuration),
+			zap.String("transport", "http"),
+			zap.String("server", serverAddr),
+			zap.Int("rateLimit", cfg.RateLimit),
+		)
+	}
 
 	// Worker pool: ограничивает количество одновременных исходящих запросов
 	// и дорабатывает очередь при штатном завершении.
@@ -124,7 +166,7 @@ func main() {
 				time.Duration(cfg.ShutdownTimeout)*time.Second)
 			defer cancel()
 			if err := pool.Shutdown(shutdownCtx); err != nil {
-				logger.Log.Error("Не все метрики доставлены при завершении: " + err.Error())
+				logger.Log.Error("Не все метрики доставлены при завершении", zap.Error(err))
 			}
 
 			logger.Log.Info("Агент остановлен")

@@ -184,6 +184,7 @@ func TestSender_Send(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+		assert.Equal(t, "10.1.2.3", r.Header.Get("X-Real-IP"))
 
 		gz, err := gzip.NewReader(r.Body)
 		if err != nil {
@@ -205,7 +206,7 @@ func TestSender_Send(t *testing.T) {
 	c := NewCollector()
 	c.Collect()
 
-	s := NewSender(server.URL, "", nil)
+	s := NewSender(server.URL, "", "10.1.2.3", nil)
 	s.Send(context.Background(), c.Metrics())
 
 	expectedCount := len(c.runtimeMetrics) + len(c.extraMetrics) + 2 // gauges + extra + RandomValue + PollCount

@@ -33,6 +33,14 @@ type ServerConfig struct {
 	CryptoKey string
 	// ShutdownTimeout — сколько ждать завершения текущих запросов при остановке, сек.
 	ShutdownTimeout int
+	// TrustedSubnet — доверенная подсеть в нотации CIDR (пусто = проверка IP отключена).
+	TrustedSubnet string
+	// GRPCAddress — адрес и порт gRPC-сервера (пусто = gRPC отключён).
+	GRPCAddress string
+	// GRPCCertFile — путь к серверному TLS-сертификату для gRPC.
+	GRPCCertFile string
+	// GRPCKeyFile — путь к приватному ключу серверного TLS-сертификата.
+	GRPCKeyFile string
 }
 
 // Имена флагов сервера.
@@ -48,6 +56,10 @@ const (
 	srvFlagPprof           = "pprof"
 	srvFlagCryptoKey       = "crypto-key"
 	srvFlagShutdownTimeout = "shutdown-timeout"
+	srvFlagTrustedSubnet   = "t"
+	srvFlagGRPCAddress     = "g"
+	srvFlagGRPCCert        = "grpc-cert"
+	srvFlagGRPCKey         = "grpc-key"
 )
 
 // serverFileConfig — представление JSON-файла конфигурации сервера. Поля-указатели,
@@ -64,6 +76,10 @@ type serverFileConfig struct {
 	AuditURL        *string `json:"audit_url"`
 	PprofAddr       *string `json:"pprof_addr"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
+	GRPCAddress     *string `json:"grpc_address"`
+	GRPCCertFile    *string `json:"grpc_cert_file"`
+	GRPCKeyFile     *string `json:"grpc_key_file"`
 }
 
 // applyTo накладывает значения из файла на cfg, перекрывая только те поля, чьи флаги
@@ -110,6 +126,18 @@ func (fc *serverFileConfig) applyTo(cfg *ServerConfig, set map[string]bool) erro
 		}
 		cfg.ShutdownTimeout = n
 	}
+	if fc.TrustedSubnet != nil && !set[srvFlagTrustedSubnet] {
+		cfg.TrustedSubnet = *fc.TrustedSubnet
+	}
+	if fc.GRPCAddress != nil && !set[srvFlagGRPCAddress] {
+		cfg.GRPCAddress = *fc.GRPCAddress
+	}
+	if fc.GRPCCertFile != nil && !set[srvFlagGRPCCert] {
+		cfg.GRPCCertFile = *fc.GRPCCertFile
+	}
+	if fc.GRPCKeyFile != nil && !set[srvFlagGRPCKey] {
+		cfg.GRPCKeyFile = *fc.GRPCKeyFile
+	}
 	return nil
 }
 
@@ -142,6 +170,10 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 	fs.StringVar(&cfg.PprofAddr, srvFlagPprof, "", "address for pprof debug endpoint (empty disables)")
 	fs.StringVar(&cfg.CryptoKey, srvFlagCryptoKey, "", "path to private key file for request decryption")
 	fs.IntVar(&cfg.ShutdownTimeout, srvFlagShutdownTimeout, 5, "graceful shutdown timeout in seconds")
+	fs.StringVar(&cfg.TrustedSubnet, srvFlagTrustedSubnet, "", "trusted subnet in CIDR notation (empty disables IP check)")
+	fs.StringVar(&cfg.GRPCAddress, srvFlagGRPCAddress, "", "address and port for gRPC server (empty disables gRPC)")
+	fs.StringVar(&cfg.GRPCCertFile, srvFlagGRPCCert, "", "path to gRPC server TLS certificate")
+	fs.StringVar(&cfg.GRPCKeyFile, srvFlagGRPCKey, "", "path to gRPC server TLS private key")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -194,6 +226,18 @@ func parseServerConfig(args []string) (*ServerConfig, error) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.ShutdownTimeout = n
 		}
+	}
+	if v, ok := os.LookupEnv("TRUSTED_SUBNET"); ok {
+		cfg.TrustedSubnet = v
+	}
+	if v, ok := os.LookupEnv("GRPC_ADDRESS"); ok {
+		cfg.GRPCAddress = v
+	}
+	if v, ok := os.LookupEnv("GRPC_CERT_FILE"); ok {
+		cfg.GRPCCertFile = v
+	}
+	if v, ok := os.LookupEnv("GRPC_KEY_FILE"); ok {
+		cfg.GRPCKeyFile = v
 	}
 
 	if cfg.ShutdownTimeout <= 0 {

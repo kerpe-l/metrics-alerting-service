@@ -48,16 +48,19 @@ func isRetriableHTTPError(err error) bool {
 type Sender struct {
 	serverAddr string
 	key        string
+	realIP     string
 	pubKey     *rsa.PublicKey
 	client     *http.Client
 }
 
-// NewSender создаёт новый отправитель метрик.
+// NewSender создаёт новый отправитель метрик. realIP проставляется в заголовок
+// X-Real-IP каждого запроса (пусто = заголовок не ставится).
 // При pubKey != nil тело каждого запроса шифруется публичным ключом сервера.
-func NewSender(serverAddr, key string, pubKey *rsa.PublicKey) *Sender {
+func NewSender(serverAddr, key, realIP string, pubKey *rsa.PublicKey) *Sender {
 	return &Sender{
 		serverAddr: serverAddr,
 		key:        key,
+		realIP:     realIP,
 		pubKey:     pubKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
@@ -118,6 +121,9 @@ func (s *Sender) Send(ctx context.Context, metrics []model.Metrics) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if s.realIP != "" {
+			req.Header.Set("X-Real-IP", s.realIP)
+		}
 		if encrypted {
 			req.Header.Set(crypto.HeaderEncrypted, "1")
 		}
